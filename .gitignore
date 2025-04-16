@@ -1,0 +1,61 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+build/
+develop-eggs/
+dist/
+eggs/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Virtual environments (pyenv + venv)
+.venv/
+venv/
+env/
+ENV/
+.python-version
+
+# Pyenv
+.python-version
+
+# VSCode settings
+.vscode/
+
+# pytest
+.pytest_cache/
+.cache/
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pylint
+pylint-report.txt
+pylint-global.txt
+
+# Pyre type checker
+.pyre/
+
+# Coverage
+htmlcov/
+.coverage
+.coverage.*
+
+# Logs and databases
+*.log
+*.sqlite3
+
+# MacOS
+.DS_Store
