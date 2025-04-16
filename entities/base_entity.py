@@ -1,6 +1,7 @@
 import pygame
 import math
 import random
+from entities.neural_network import NeuralNetwork
 
 class BaseEntity:
     def __init__(self, x, y):
@@ -14,24 +15,43 @@ class BaseEntity:
         self.move_timer = 0
         self.is_moving = True
 
+        # Vision
+        self.fov = math.radians(120)  # field of view in radians
+        self.num_rays = 7             # number of rays
+        self.view_range = 120         # how far rays go
+        self.vision = [1.0] * self.num_rays  # initialize to "nothing seen"
+
         self.stretch = 1.0  # dynamic scale factor
 
+        # Neural network
+        self.brain = NeuralNetwork(input_size=self.num_rays)
+        self.angular_velocity = 0.0
+        self.max_turn_speed = 0.15  # radians per frame
+
+
     def update(self):
-        self._update_movement_timing()
+        # --- Neural network controls movement ---
+        out = self.brain.forward(self.vision)
+        self.angular_velocity = out[0]  # -1 to 1
+        speed_factor = (out[1] + 1) / 2  # convert [-1, 1] → [0, 1]
+        self.speed = speed_factor * self.max_speed
 
-        if self.is_moving:
-            self.speed = min(self.speed + 0.1, self.max_speed)
-        else:
-            self.speed = max(self.speed - 0.2, 0)
+        # --- Smooth turning ---
+        self.angle += self.angular_velocity * self.max_turn_speed
+        self.angle %= 2 * math.pi
 
+        # --- Movement ---
         self.x += math.cos(self.angle) * self.speed
         self.y += math.sin(self.angle) * self.speed
 
+        # Wrap around edges
         screen_width, screen_height = pygame.display.get_surface().get_size()
         self.x %= screen_width
         self.y %= screen_height
 
+        # --- Visual squash/stretch effect ---
         self._update_softbody_stretch()
+
 
     def _update_movement_timing(self):
         if self.is_moving:
@@ -78,3 +98,68 @@ class BaseEntity:
 
             # Pupil (centered for now)
             pygame.draw.circle(surface, (0, 0, 0), (int(eye_x), int(eye_y)), pupil_radius)
+
+        # Draw vision rays
+        half_fov = self.fov / 2
+        start_angle = self.angle - half_fov
+
+        for i, norm_dist in enumerate(self.vision):
+            angle = start_angle + i * (self.fov / (self.num_rays - 1))
+            dist = norm_dist * self.view_range
+
+            end_x = self.x + math.cos(angle) * dist
+            end_y = self.y + math.sin(angle) * dist
+
+            color = (255, 255, 0) if norm_dist < 1.0 else (100, 100, 100)
+            pygame.draw.line(surface, color, (self.x, self.y), (end_x, end_y), 1)
+
+
+
+    def cast_vision(self, others):
+        self.vision = []
+
+        half_fov = self.fov / 2
+        start_angle = self.angle - half_fov
+        ray_angles = [start_angle + i * (self.fov / (self.num_rays - 1)) for i in range(self.num_rays)]
+
+        for angle in ray_angles:
+            closest_dist = self.view_range
+            ray_dx = math.cos(angle)
+            ray_dy = math.sin(angle)
+
+            for other in others:
+                if other is self:
+                    continue
+
+                dx = other.x - self.x
+                dy = other.y - self.y
+                proj_len = dx * ray_dx + dy * ray_dy  # projection onto ray direction
+
+                if 0 < proj_len < self.view_range:
+                    closest_point_x = self.x + ray_dx * proj_len
+                    closest_point_y = self.y + ray_dy * proj_len
+                    dist_to_other = math.hypot(other.x - closest_point_x, other.y - closest_point_y)
+
+                    if dist_to_other < other.radius:
+                        closest_dist = min(closest_dist, proj_len)
+
+            self.vision.append(closest_dist / self.view_range)  # normalize
+
+
+    def resolve_collisions(self, others):
+        for other in others:
+            if other is self:
+                continue
+            dx = self.x - other.x
+            dy = self.y - other.y
+            dist = math.hypot(dx, dy)
+            overlap = self.radius + other.radius - dist
+            if overlap > 0 and dist > 0:
+                push_x = (dx / dist) * (overlap / 2)
+                push_y = (dy / dist) * (overlap / 2)
+                self.x += push_x
+                self.y += push_y
+                other.x -= push_x
+                other.y -= push_y
+
+
