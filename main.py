@@ -7,11 +7,12 @@ from spatial_grid import SpatialGrid
 
 pygame.init()
 
+MAX_PREY = 350
 SCREEN_WIDTH, SCREEN_HEIGHT = 1280, 800
 GRID_CELL_SIZE = 80
 VISION_THROTTLE = 3
 NUM_STARTING_PREY = 50
-NUM_STARTING_PREDATORS = 3
+NUM_STARTING_PREDATORS = 4
 
 screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.RESIZABLE)
 pygame.display.set_caption("Evolving AIs: Predator vs Prey")
@@ -22,9 +23,11 @@ last_info_update_time = 0
 displayed_energy = 0
 displayed_repro_seconds = 0
 
+
 entities = []
 predators = []
 prey_list = []
+
 
 for _ in range(NUM_STARTING_PREY):
     x, y = random.randint(100, 1100), random.randint(100, 700)
@@ -69,15 +72,24 @@ while running:
 
     if frame_count % VISION_THROTTLE == 0:
         for e in entities:
-            neighbors = [
-                n for n in grid.get_neighbors(e)
-                if (n.x - e.x) ** 2 + (n.y - e.y) ** 2 <= (e.view_range + n.radius) ** 2
-            ]
-            if isinstance(e, Prey):
-                neighbors = [n for n in neighbors if isinstance(n, Predator)]
-            elif isinstance(e, Predator):
-                neighbors = [n for n in neighbors if isinstance(n, Prey)]
-            e.cast_vision(neighbors)
+            neighbors = grid.get_neighbors(e)
+            nearby = []
+
+            view_range_sq = e.view_range * e.view_range
+            detect_type = Predator if isinstance(e, Prey) else Prey if isinstance(e, Predator) else None
+
+            for o in neighbors:
+                if o is e:
+                    continue
+                if detect_type and not isinstance(o, detect_type):
+                    continue
+                dx = o.x - e.x
+                dy = o.y - e.y
+                if dx * dx + dy * dy <= view_range_sq + o.radius * o.radius:
+                    nearby.append(o)
+
+            e.cast_vision(nearby)
+
 
     new_entities = []
     removed_prey = []
@@ -87,6 +99,8 @@ while running:
             e.update(grid)
             if e.should_reproduce():
                 e.energy -= e.reproduce_energy_cost
+                if len(prey_list) >= MAX_PREY:
+                    continue
                 child = e.clone()
                 new_entities.append(child)
                 e.children_spawned += 1

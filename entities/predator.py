@@ -4,6 +4,14 @@ import random
 from entities.base_entity import BaseEntity
 from entities.neural_network import NeuralNetwork
 
+MAX_SPEED = 2.0
+EAT_COOLDOWN_FRAMES = 60
+REQUIRED_EATS_TO_REPRODUCE = 3
+STARVATION_THRESHOLD_FRAMES = 2000
+STARTING_ENERGY = 100
+MAX_ENERGY = 100
+ENERGY_BURN_RATE = 0.03
+
 class Predator(BaseEntity):
     def __init__(self, x, y, generation=0):
         self.num_rays = 7
@@ -16,28 +24,25 @@ class Predator(BaseEntity):
         self.generation = generation
 
         self.brain = NeuralNetwork(input_size=self.num_rays + 1)
-        # Bias initial predator to go straight, but don't zero out everything
         self.brain.b2[0] = 0.0  # no turn
-        # self.brain.b2[1] = 1.0  # max speed
 
 
         self.speed = 0
-        self.max_speed = 2.0
+        self.max_speed = MAX_SPEED
         self.max_turn_speed = 0.15
 
         self.prey_eaten = 0
         self.children_spawned = 0
         self.age = 0
         self.last_eat_time = -1000
-        self.eat_cooldown_frames = 60
-        self.required_eats_to_reproduce = 3
+        self.eat_cooldown_frames = EAT_COOLDOWN_FRAMES
+        self.required_eats_to_reproduce = REQUIRED_EATS_TO_REPRODUCE
         self.time_since_last_meal = 0
-        self.starvation_threshold = 600
+        self.starvation_threshold = STARVATION_THRESHOLD_FRAMES
 
-        self.energy = 120
-        self.max_energy = 100
-        self.energy_burn_base = 0.03
-        self.energy_burn_per_speed = 0.02
+        self.energy = STARTING_ENERGY
+        self.max_energy = MAX_ENERGY
+        self.energy_burn_base = ENERGY_BURN_RATE
 
     def update(self, frame_count, prey_list):
         self.age += 1
@@ -60,7 +65,7 @@ class Predator(BaseEntity):
         self._update_softbody_stretch()
 
         # Burn energy
-        self.energy -= self.energy_burn_base + self.speed * self.energy_burn_per_speed
+        self.energy -= self.energy_burn_base
         self.energy = max(0, self.energy)
 
         if frame_count % 2 == 0:
@@ -132,6 +137,10 @@ class Predator(BaseEntity):
             self.draw_vision_rays(screen)
 
     def avoid_neighbors(self, grid):
+        if self.neighbor_avoid_timer > 0:
+            self.neighbor_avoid_timer -= 1
+            return
+        self.neighbor_avoid_timer = 4
         neighbors = grid.get_neighbors(self)
         for other in neighbors:
             if other is self or not isinstance(other, Predator):
