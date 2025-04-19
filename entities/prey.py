@@ -6,17 +6,16 @@ from entities.neural_network import NeuralNetwork
 
 class Prey(BaseEntity):
     def __init__(self, x, y, generation=0):
-        self.num_rays = 24   
+        self.num_rays = 24
         super().__init__(x, y)
         self.color = (100, 200, 255)
         self.radius = 10
         self.generation = generation
-         
+
         self.fov = math.radians(360)
-        self.view_range = 60
+        self.view_range = 100
         self.brain = NeuralNetwork(input_size=self.num_rays + 1)
 
-        # Movement settings
         self.max_speed = 1.5
         self.max_turn_speed = 0.15
         self.energy = 50
@@ -28,42 +27,42 @@ class Prey(BaseEntity):
         self.speed = 0
         self.angular_velocity = 0
         self.time_at_max_energy = 0
-        self.reproduce_threshold = 600 # 10s at 60fps
+        self.reproduce_threshold = 600  # 10s at 60fps
+        self.reproduce_energy_cost = 10
         self.children_spawned = 0
+        self.age = 0
 
+        self.vision_hits = ["none"] * self.num_rays
 
     def update(self, grid):
         # === Detect predator ===
-        sees_threat = any(ray < 0.7 for ray in self.vision[:self.num_rays])
+        sees_threat = any(ray < 0.7 and hit == "predator"
+                          for ray, hit in zip(self.vision, self.vision_hits))
 
         # === Run brain ===
         vision_input = self.vision + [1.0]  # bias
         out = self.brain.forward(vision_input)
-        desired_turn = out[0]
+        self.angular_velocity = out[0]
         speed_factor = (out[1] + 1) / 2
         desired_speed = speed_factor * self.max_speed
 
-        # === Move and rotate only if threat and has energy ===
         if self.energy > 0 and sees_threat:
-            self.angular_velocity = desired_turn
             self.angle += self.angular_velocity * self.max_turn_speed
-            self.angle %= math.tau
 
+        self.angle %= math.tau
+
+        if self.energy > 0 and sees_threat:
             self.speed = desired_speed
             self.x += math.cos(self.angle) * self.speed
             self.y += math.sin(self.angle) * self.speed
 
             self.energy -= self.energy_burn_base + self.speed * self.energy_burn_per_speed
             self.energy = max(0, self.energy)
-
-            # Reset time-at-max-energy since it’s not resting
             self.time_at_max_energy = 0
         else:
-            # Completely still
-            self.speed = 0
             self.angular_velocity = 0
+            self.speed = 0
 
-            # Regenerate
             self.energy += self.energy_regen
             self.energy = min(self.energy, self.max_energy)
 
@@ -72,15 +71,12 @@ class Prey(BaseEntity):
             else:
                 self.time_at_max_energy = 0
 
-        # === Screen wrap ===
         screen_width, screen_height = pygame.display.get_surface().get_size()
         self.x %= screen_width
         self.y %= screen_height
 
         self._update_softbody_stretch()
         self.avoid_neighbors(grid)
-
-
 
     def avoid_neighbors(self, grid):
         neighbors = grid.get_neighbors(self)
@@ -95,9 +91,14 @@ class Prey(BaseEntity):
                 self.angle += 0.04 * math.sin(repel_angle - self.angle)
 
     def should_reproduce(self):
-        return self.time_at_max_energy >= self.reproduce_threshold
+        return (self.time_at_max_energy >= self.reproduce_threshold and
+                self.energy >= self.reproduce_energy_cost)
 
     def clone(self):
-        child = Prey(self.x + random.randint(-10, 10), self.y + random.randint(-10, 10), generation=self.generation + 1)
+        child = Prey(
+            self.x + random.randint(-10, 10),
+            self.y + random.randint(-10, 10),
+            generation=self.generation + 1
+        )
         child.brain = self.brain.copy_with_mutation()
         return child

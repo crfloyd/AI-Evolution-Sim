@@ -9,17 +9,15 @@ pygame.init()
 
 SCREEN_WIDTH, SCREEN_HEIGHT = 1280, 800
 GRID_CELL_SIZE = 80
-VISION_THROTTLE = 3  # Only update vision every N frames
-
+VISION_THROTTLE = 3
 NUM_STARTING_PREY = 50
 NUM_STARTING_PREDATORS = 3
 
-
 screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.RESIZABLE)
 pygame.display.set_caption("Evolving AIs: Predator vs Prey")
-
 clock = pygame.time.Clock()
 font = pygame.font.SysFont(None, 22)
+
 last_info_update_time = 0
 displayed_energy = 0
 displayed_repro_seconds = 0
@@ -28,13 +26,11 @@ entities = []
 predators = []
 prey_list = []
 
-# Initial population
 for _ in range(NUM_STARTING_PREY):
     x, y = random.randint(100, 1100), random.randint(100, 700)
     prey = Prey(x, y)
     entities.append(prey)
     prey_list.append(prey)
-
 
 for _ in range(NUM_STARTING_PREDATORS):
     x, y = random.randint(100, 1100), random.randint(100, 700)
@@ -42,16 +38,9 @@ for _ in range(NUM_STARTING_PREDATORS):
     entities.append(predator)
     predators.append(predator)
 
-entities.append(predator)
-predators.append(predator)
-
-entities.append(predator)
-predators.append(predator)
-
 selected_entity = None
 show_debug_panel = False
 frame_count = 0
-
 grid = SpatialGrid(SCREEN_WIDTH, SCREEN_HEIGHT, cell_size=GRID_CELL_SIZE)
 
 running = True
@@ -78,30 +67,26 @@ while running:
             if event.key == pygame.K_d and pygame.key.get_mods() & pygame.KMOD_ALT:
                 show_debug_panel = not show_debug_panel
 
-    # === Throttled vision updates ===
     if frame_count % VISION_THROTTLE == 0:
         for e in entities:
             neighbors = [
                 n for n in grid.get_neighbors(e)
                 if (n.x - e.x) ** 2 + (n.y - e.y) ** 2 <= (e.view_range + n.radius) ** 2
             ]
-
-            # === Filter visible threats based on entity type ===
             if isinstance(e, Prey):
                 neighbors = [n for n in neighbors if isinstance(n, Predator)]
             elif isinstance(e, Predator):
                 neighbors = [n for n in neighbors if isinstance(n, Prey)]
-
             e.cast_vision(neighbors)
 
-
-    # === Update entities ===
     new_entities = []
     removed_prey = []
     for e in entities:
         if isinstance(e, Prey):
+            e.age += 1
             e.update(grid)
             if e.should_reproduce():
+                e.energy -= e.reproduce_energy_cost
                 child = e.clone()
                 new_entities.append(child)
                 e.children_spawned += 1
@@ -137,23 +122,19 @@ while running:
         else:
             predators.append(n)
 
-    # === Throttled collision resolution ===
-    if frame_count % 3 == 0:
+    if frame_count % 5 == 0:
         for e in entities:
             neighbors = grid.get_neighbors(e)
             e.resolve_collisions(neighbors)
 
-    # === Draw everything ===
     for e in entities:
         e.draw(screen, selected=(e == selected_entity))
 
-    # Info panel for selected entity
     if selected_entity:
         lines = [
             f"Gen: {selected_entity.generation}"
         ]
         if isinstance(selected_entity, Prey):
-            # Throttle to once per second
             if frame_count - last_info_update_time > 60:
                 displayed_energy = round(selected_entity.energy)
                 if displayed_energy >= selected_entity.max_energy:
@@ -177,6 +158,7 @@ while running:
                 f"Children: {selected_entity.children_spawned}",
                 f"Time to Starvation: {time_to_starve}s"
             ]
+
         panel_width = 260
         panel_height = 20 + len(lines) * 20
         panel_x = SCREEN_WIDTH - panel_width - 10
@@ -186,7 +168,6 @@ while running:
             text_surface = font.render(line, True, (255, 255, 255))
             screen.blit(text_surface, (panel_x + 10, panel_y + 10 + i * 20))
 
-    # Debug panel
     if show_debug_panel:
         fps = int(clock.get_fps())
         stats = [

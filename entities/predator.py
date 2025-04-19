@@ -6,46 +6,45 @@ from entities.neural_network import NeuralNetwork
 
 class Predator(BaseEntity):
     def __init__(self, x, y, generation=0):
-        self.num_rays = 5
+        self.num_rays = 7
         super().__init__(x, y)
 
-        self.fov = math.radians(60)
+        self.fov = math.radians(90)
         self.view_range = 250
         self.color = (255, 80, 80)
         self.radius = 12
         self.generation = generation
 
-        # Replace brain initialized in base with a correct one
         self.brain = NeuralNetwork(input_size=self.num_rays + 1)
-        self.brain.w1 *= 0
-        self.brain.w2 *= 0
-        self.brain.b2[0] = 0.0  # No turning
-        self.brain.b2[1] = 1.0  # Full speed
+        # Bias initial predator to go straight, but don't zero out everything
+        self.brain.b2[0] = 0.0  # no turn
+        # self.brain.b2[1] = 1.0  # max speed
 
-        # Movement tuning
+
         self.speed = 0
         self.max_speed = 2.0
         self.max_turn_speed = 0.15
 
-        # Reproduction tracking
         self.prey_eaten = 0
         self.children_spawned = 0
         self.age = 0
         self.last_eat_time = -1000
-        self.eat_cooldown_frames = 60  # 1 second at 60fps
+        self.eat_cooldown_frames = 60
         self.required_eats_to_reproduce = 3
         self.time_since_last_meal = 0
-        self.starvation_threshold = 480  # 8 seconds at 60 FPS
+        self.starvation_threshold = 600
 
-
+        self.energy = 120
+        self.max_energy = 100
+        self.energy_burn_base = 0.03
+        self.energy_burn_per_speed = 0.02
 
     def update(self, frame_count, prey_list):
         self.age += 1
 
-        # Brain controls movement
         vision_input = self.vision + [1.0]
         out = self.brain.forward(vision_input)
-        self.angular_velocity = out[0] * 1.5
+        self.angular_velocity = out[0] * 0.7
         speed_factor = (out[1] + 1) / 2
         self.speed = speed_factor * self.max_speed
 
@@ -60,7 +59,10 @@ class Predator(BaseEntity):
 
         self._update_softbody_stretch()
 
-        # Check for prey collision every other frame
+        # Burn energy
+        self.energy -= self.energy_burn_base + self.speed * self.energy_burn_per_speed
+        self.energy = max(0, self.energy)
+
         if frame_count % 2 == 0:
             eaten = []
             for prey in prey_list:
@@ -75,7 +77,8 @@ class Predator(BaseEntity):
                     if frame_count - self.last_eat_time > self.eat_cooldown_frames:
                         self.prey_eaten += 1
                         self.last_eat_time = frame_count
-                        self.time_since_last_meal = 0  # ✅ Correctly placed
+                        self.time_since_last_meal = 0
+                        self.energy = min(self.energy + 30, self.max_energy)
 
                         if self.prey_eaten >= self.required_eats_to_reproduce:
                             self.prey_eaten = 0
@@ -86,13 +89,11 @@ class Predator(BaseEntity):
             if eaten:
                 return "eat", eaten
 
-        # === Starvation logic ===
         self.time_since_last_meal += 1
-        if self.time_since_last_meal >= self.starvation_threshold:
+        if self.time_since_last_meal >= self.starvation_threshold or self.energy <= 0:
             return "die", self
 
         return None, None
-
 
     def clone(self):
         child = Predator(
@@ -100,7 +101,7 @@ class Predator(BaseEntity):
             self.y + random.randint(-10, 10),
             generation=self.generation + 1
         )
-        child.brain = self.brain.copy_with_mutation()
+        child.brain = self.brain.copy_with_mutation(mutation_rate=0.05)
         return child
 
     def draw(self, screen, selected=False):
@@ -114,7 +115,6 @@ class Predator(BaseEntity):
         rect = rotated.get_rect(center=(self.x, self.y))
         screen.blit(rotated, rect)
 
-        # Eyes
         eye_offset_angle = math.pi / 6
         eye_distance = self.radius * 0.8
         eye_radius = 4

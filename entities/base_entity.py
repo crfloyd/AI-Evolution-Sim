@@ -107,8 +107,9 @@ class BaseEntity:
 
     def cast_vision(self, others):
         self.vision = []
+        self.vision_hits = []
 
-        if math.isclose(self.fov, math.tau):  # 360-degree vision
+        if math.isclose(self.fov, math.tau):
             ray_angles = [i * (math.tau / self.num_rays) for i in range(self.num_rays)]
         else:
             half_fov = self.fov / 2
@@ -117,13 +118,13 @@ class BaseEntity:
 
         for angle in ray_angles:
             closest_dist = self.view_range
+            hit_type = "none"
             ray_dx = math.cos(angle)
             ray_dy = math.sin(angle)
 
             for other in others:
                 if other is self:
                     continue
-
                 dx = other.x - self.x
                 dy = other.y - self.y
                 proj_len = dx * ray_dx + dy * ray_dy
@@ -131,12 +132,17 @@ class BaseEntity:
                 if 0 < proj_len < self.view_range:
                     closest_x = self.x + ray_dx * proj_len
                     closest_y = self.y + ray_dy * proj_len
-                    dist_to_other = math.hypot(other.x - closest_x, other.y - closest_y)
-
-                    if dist_to_other < other.radius:
-                        closest_dist = min(closest_dist, proj_len)
+                    dx = other.x - closest_x
+                    dy = other.y - closest_y
+                    dist_sq = dx * dx + dy * dy
+                    if dist_sq < other.radius * other.radius:
+                        closest_dist = proj_len
+                        hit_type = other.__class__.__name__.lower()
 
             self.vision.append(closest_dist / self.view_range)
+            self.vision_hits.append(hit_type)
+
+
 
 
 
@@ -150,8 +156,13 @@ class BaseEntity:
                 continue
             dx = self.x - other.x
             dy = self.y - other.y
-            dist = math.hypot(dx, dy)
-            overlap = self.radius + other.radius - dist
+            dist_sq = dx * dx + dy * dy
+            overlap = 0
+            radius_sum = self.radius + other.radius
+            if dist_sq < radius_sum * radius_sum:
+                dist = math.sqrt(dist_sq)
+                overlap = radius_sum - dist
+
             if overlap > 0 and dist > 0:
                 push_amount = min(overlap * push_strength, max_push)
                 if push_amount < 0.05:
