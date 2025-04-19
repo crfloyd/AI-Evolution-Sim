@@ -34,6 +34,8 @@ class Predator(BaseEntity):
         self.last_eat_time = -1000
         self.eat_cooldown_frames = 60  # 1 second at 60fps
         self.required_eats_to_reproduce = 3
+        self.time_since_last_meal = 0
+        self.starvation_threshold = 480  # 8 seconds at 60 FPS
 
 
 
@@ -73,15 +75,24 @@ class Predator(BaseEntity):
                     if frame_count - self.last_eat_time > self.eat_cooldown_frames:
                         self.prey_eaten += 1
                         self.last_eat_time = frame_count
+                        self.time_since_last_meal = 0  # ✅ Correctly placed
 
                         if self.prey_eaten >= self.required_eats_to_reproduce:
                             self.prey_eaten = 0
                             return "reproduce", prey
+
                     eaten.append(prey)
 
-            return "eat", eaten
+            if eaten:
+                return "eat", eaten
+
+        # === Starvation logic ===
+        self.time_since_last_meal += 1
+        if self.time_since_last_meal >= self.starvation_threshold:
+            return "die", self
 
         return None, None
+
 
     def clone(self):
         child = Predator(

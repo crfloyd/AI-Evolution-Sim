@@ -6,15 +6,14 @@ from entities.neural_network import NeuralNetwork
 
 class Prey(BaseEntity):
     def __init__(self, x, y, generation=0):
+        self.num_rays = 24   
         super().__init__(x, y)
         self.color = (100, 200, 255)
         self.radius = 10
         self.generation = generation
-
-        # Neural network: 7 rays + bias
-        self.num_rays = 7
+         
         self.fov = math.radians(360)
-        self.view_range = 100
+        self.view_range = 60
         self.brain = NeuralNetwork(input_size=self.num_rays + 1)
 
         # Movement settings

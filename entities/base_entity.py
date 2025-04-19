@@ -17,7 +17,6 @@ class BaseEntity:
 
         # Vision
         self.fov = math.radians(120)  # field of view in radians
-        self.num_rays = 7             # number of rays
         self.view_range = 120         # how far rays go
         self.vision = [1.0] * self.num_rays  # initialize to "nothing seen"
 
@@ -85,49 +84,60 @@ class BaseEntity:
 
 
     def draw_vision_rays(self, surface):
-        half_fov = self.fov / 2
-        start_angle = self.angle - half_fov
+        if not self.vision:
+            return
 
-        for i, norm_dist in enumerate(self.vision):
-            angle = start_angle + i * (self.fov / (self.num_rays - 1))
-            dist = norm_dist * self.view_range
+        if math.isclose(self.fov, math.tau):  # 360° vision
+            ray_angles = [i * (math.tau / self.num_rays) for i in range(self.num_rays)]
+        else:
+            half_fov = self.fov / 2
+            start_angle = self.angle - half_fov
+            ray_angles = [start_angle + i * (self.fov / (self.num_rays - 1)) for i in range(self.num_rays)]
 
-            end_x = self.x + math.cos(angle) * dist
-            end_y = self.y + math.sin(angle) * dist
+        for i, angle in enumerate(ray_angles):
+            normalized_dist = self.vision[i]
+            actual_length = normalized_dist * self.view_range
 
-            color = (255, 255, 0) if norm_dist < 1.0 else (100, 100, 100)
+            end_x = self.x + math.cos(angle) * actual_length
+            end_y = self.y + math.sin(angle) * actual_length
+
+            color = (255, 255, 0) if normalized_dist < 1.0 else (100, 100, 100)
             pygame.draw.line(surface, color, (self.x, self.y), (end_x, end_y), 1)
 
 
     def cast_vision(self, others):
         self.vision = []
 
-        half_fov = self.fov / 2
-        start_angle = self.angle - half_fov
-        ray_angles = [start_angle + i * (self.fov / (self.num_rays - 1)) for i in range(self.num_rays)]
+        if math.isclose(self.fov, math.tau):  # 360-degree vision
+            ray_angles = [i * (math.tau / self.num_rays) for i in range(self.num_rays)]
+        else:
+            half_fov = self.fov / 2
+            start_angle = self.angle - half_fov
+            ray_angles = [start_angle + i * (self.fov / (self.num_rays - 1)) for i in range(self.num_rays)]
 
         for angle in ray_angles:
             closest_dist = self.view_range
             ray_dx = math.cos(angle)
             ray_dy = math.sin(angle)
 
-            for i, other in enumerate(others):
-                if id(other) <= id(self):  # ensure only one direction (A vs B, not B vs A)
+            for other in others:
+                if other is self:
                     continue
 
                 dx = other.x - self.x
                 dy = other.y - self.y
-                proj_len = dx * ray_dx + dy * ray_dy  # projection onto ray direction
+                proj_len = dx * ray_dx + dy * ray_dy
 
                 if 0 < proj_len < self.view_range:
-                    closest_point_x = self.x + ray_dx * proj_len
-                    closest_point_y = self.y + ray_dy * proj_len
-                    dist_to_other = math.hypot(other.x - closest_point_x, other.y - closest_point_y)
+                    closest_x = self.x + ray_dx * proj_len
+                    closest_y = self.y + ray_dy * proj_len
+                    dist_to_other = math.hypot(other.x - closest_x, other.y - closest_y)
 
                     if dist_to_other < other.radius:
                         closest_dist = min(closest_dist, proj_len)
 
-            self.vision.append(closest_dist / self.view_range)  # normalize
+            self.vision.append(closest_dist / self.view_range)
+
 
 
     def resolve_collisions(self, others, push_strength=0.05, max_push=0.8):

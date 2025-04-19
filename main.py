@@ -11,8 +11,8 @@ SCREEN_WIDTH, SCREEN_HEIGHT = 1280, 800
 GRID_CELL_SIZE = 80
 VISION_THROTTLE = 3  # Only update vision every N frames
 
-NUM_STARTING_PREY = 30
-NUM_STARTING_PREDATORS = 10
+NUM_STARTING_PREY = 50
+NUM_STARTING_PREDATORS = 3
 
 
 screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.RESIZABLE)
@@ -81,9 +81,19 @@ while running:
     # === Throttled vision updates ===
     if frame_count % VISION_THROTTLE == 0:
         for e in entities:
-            # Use bounding circle check before casting rays
-            neighbors = [n for n in grid.get_neighbors(e) if (n.x - e.x) ** 2 + (n.y - e.y) ** 2 <= (e.view_range + n.radius) ** 2]
+            neighbors = [
+                n for n in grid.get_neighbors(e)
+                if (n.x - e.x) ** 2 + (n.y - e.y) ** 2 <= (e.view_range + n.radius) ** 2
+            ]
+
+            # === Filter visible threats based on entity type ===
+            if isinstance(e, Prey):
+                neighbors = [n for n in neighbors if isinstance(n, Predator)]
+            elif isinstance(e, Predator):
+                neighbors = [n for n in neighbors if isinstance(n, Prey)]
+
             e.cast_vision(neighbors)
+
 
     # === Update entities ===
     new_entities = []
@@ -108,6 +118,11 @@ while running:
                 child = e.clone()
                 e.children_spawned += 1
                 new_entities.append(child)
+            elif outcome == "die":
+                if target in predators:
+                    predators.remove(target)
+                if target in entities:
+                    entities.remove(target)
 
     for p in removed_prey:
         if p in prey_list:
@@ -155,10 +170,12 @@ while running:
             ]
 
         elif isinstance(selected_entity, Predator):
+            time_to_starve = max(0, selected_entity.starvation_threshold - selected_entity.time_since_last_meal) // 60
             lines += [
-                f"Age: {selected_entity.age}",
+                f"Age: {selected_entity.age // 60}s",
                 f"Prey Eaten: {selected_entity.prey_eaten}",
-                f"Children: {selected_entity.children_spawned}"
+                f"Children: {selected_entity.children_spawned}",
+                f"Time to Starvation: {time_to_starve}s"
             ]
         panel_width = 260
         panel_height = 20 + len(lines) * 20
