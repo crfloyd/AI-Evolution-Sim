@@ -29,48 +29,6 @@ class BaseEntity:
         self.max_turn_speed = 0.15  # radians per frame
 
 
-    def update(self):
-        # --- Brain always runs ---
-        out = self.brain.forward(self.vision)
-        self.angular_velocity = out[0]
-        speed_factor = (out[1] + 1) / 2
-        intended_speed = speed_factor * self.max_speed
-
-        # --- Logic: move only if fully charged and sees threat ---
-        sees_threat = self.sees_predator()
-        can_move = self.energy >= self.max_energy and sees_threat
-
-        if can_move:
-            self.speed = intended_speed
-            self.angle += self.angular_velocity * self.max_turn_speed
-            self.angle %= math.tau
-            self.x += math.cos(self.angle) * self.speed
-            self.y += math.sin(self.angle) * self.speed
-
-            self.energy -= 0.5 + self.speed * 0.5
-            self.energy = max(self.energy, 0)
-        else:
-            # 💀 Lock speed and angle when resting
-            self.speed = 0
-            self.angular_velocity = 0
-            # ❌ Do not update position or angle
-
-        # --- Regenerate energy when still ---
-        if self.speed == 0:
-            self.energy += self.energy_regen
-            self.energy = min(self.energy, self.max_energy)
-
-        # --- Wrap screen edges ---
-        screen_width, screen_height = pygame.display.get_surface().get_size()
-        self.x %= screen_width
-        self.y %= screen_height
-
-        # --- Visual stretch/squash ---
-        self._update_softbody_stretch()
-
-
-
-
     def _update_movement_timing(self):
         if self.is_moving:
             self.move_timer -= 1
@@ -178,26 +136,23 @@ class BaseEntity:
         for other in others:
             if other is self:
                 continue
+            if type(self) != type(other):  # 🔒 skip predator-prey collisions
+                continue
             dx = self.x - other.x
             dy = self.y - other.y
             dist = math.hypot(dx, dy)
             overlap = self.radius + other.radius - dist
-            min_overlap = 0.5
-            if overlap > min_overlap and dist > 0:
-                falloff = min(1.0, (overlap - min_overlap) / self.radius)
+            if overlap > 0 and dist > 0:
                 push_amount = min(overlap * push_strength, max_push)
-
-                # Avoid accumulated jitter by clamping subpixel movement
                 if push_amount < 0.05:
                     continue
-
                 push_x = (dx / dist) * (push_amount / 2)
                 push_y = (dy / dist) * (push_amount / 2)
-
                 self.x += push_x
                 self.y += push_y
                 other.x -= push_x
                 other.y -= push_y
+
 
 
 
