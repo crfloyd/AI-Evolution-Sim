@@ -30,27 +30,45 @@ class BaseEntity:
 
 
     def update(self):
-        # --- Neural network controls movement ---
+        # --- Brain always runs ---
         out = self.brain.forward(self.vision)
-        self.angular_velocity = out[0]  # -1 to 1
-        speed_factor = (out[1] + 1) / 2  # convert [-1, 1] → [0, 1]
-        self.speed = speed_factor * self.max_speed
+        self.angular_velocity = out[0]
+        speed_factor = (out[1] + 1) / 2
+        intended_speed = speed_factor * self.max_speed
 
-        # --- Smooth turning ---
-        self.angle += self.angular_velocity * self.max_turn_speed
-        self.angle %= 2 * math.pi
+        # --- Logic: move only if fully charged and sees threat ---
+        sees_threat = self.sees_predator()
+        can_move = self.energy >= self.max_energy and sees_threat
 
-        # --- Movement ---
-        self.x += math.cos(self.angle) * self.speed
-        self.y += math.sin(self.angle) * self.speed
+        if can_move:
+            self.speed = intended_speed
+            self.angle += self.angular_velocity * self.max_turn_speed
+            self.angle %= math.tau
+            self.x += math.cos(self.angle) * self.speed
+            self.y += math.sin(self.angle) * self.speed
 
-        # Wrap around edges
+            self.energy -= 0.5 + self.speed * 0.5
+            self.energy = max(self.energy, 0)
+        else:
+            # 💀 Lock speed and angle when resting
+            self.speed = 0
+            self.angular_velocity = 0
+            # ❌ Do not update position or angle
+
+        # --- Regenerate energy when still ---
+        if self.speed == 0:
+            self.energy += self.energy_regen
+            self.energy = min(self.energy, self.max_energy)
+
+        # --- Wrap screen edges ---
         screen_width, screen_height = pygame.display.get_surface().get_size()
         self.x %= screen_width
         self.y %= screen_height
 
-        # --- Visual squash/stretch effect ---
+        # --- Visual stretch/squash ---
         self._update_softbody_stretch()
+
+
 
 
     def _update_movement_timing(self):
@@ -67,17 +85,21 @@ class BaseEntity:
                 self.move_timer = random.randint(60, 180)
 
     def _update_softbody_stretch(self):
+        # Early out if not moving
+        if self.speed == 0:
+            self.stretch = 1.0
+            return
         # Stretch in movement direction, compress in perpendicular
         target_stretch = 1.0 + min(self.speed / self.max_speed, 1.0) * 0.5
         self.stretch += (target_stretch - self.stretch) * 0.2  # easing factor
 
-    def draw(self, surface):
+    def draw(self, surface, selected=False):
         angle_deg = math.degrees(self.angle)
         width = self.radius * 2 * self.stretch
         height = self.radius * 2 / self.stretch
 
         body = pygame.Surface((width, height), pygame.SRCALPHA)
-        pygame.draw.ellipse(body, (100, 200, 255), (0, 0, width, height))
+        pygame.draw.ellipse(body, self.color, (0, 0, width, height))
         rotated = pygame.transform.rotate(body, -angle_deg)
         rect = rotated.get_rect(center=(self.x, self.y))
         surface.blit(rotated, rect)
@@ -100,6 +122,11 @@ class BaseEntity:
             pygame.draw.circle(surface, (0, 0, 0), (int(eye_x), int(eye_y)), pupil_radius)
 
         # Draw vision rays
+        if selected:
+            self.draw_vision_rays(surface)
+
+
+    def draw_vision_rays(self, surface):
         half_fov = self.fov / 2
         start_angle = self.angle - half_fov
 
@@ -114,7 +141,6 @@ class BaseEntity:
             pygame.draw.line(surface, color, (self.x, self.y), (end_x, end_y), 1)
 
 
-
     def cast_vision(self, others):
         self.vision = []
 
@@ -127,8 +153,8 @@ class BaseEntity:
             ray_dx = math.cos(angle)
             ray_dy = math.sin(angle)
 
-            for other in others:
-                if other is self:
+            for i, other in enumerate(others):
+                if id(other) <= id(self):  # ensure only one direction (A vs B, not B vs A)
                     continue
 
                 dx = other.x - self.x
@@ -146,7 +172,9 @@ class BaseEntity:
             self.vision.append(closest_dist / self.view_range)  # normalize
 
 
-    def resolve_collisions(self, others):
+    def resolve_collisions(self, others, push_strength=0.05, max_push=0.8):
+        if hasattr(self, "settling_timer") and self.settling_timer > 0:
+            return
         for other in others:
             if other is self:
                 continue
@@ -154,12 +182,28 @@ class BaseEntity:
             dy = self.y - other.y
             dist = math.hypot(dx, dy)
             overlap = self.radius + other.radius - dist
-            if overlap > 0 and dist > 0:
-                push_x = (dx / dist) * (overlap / 2)
-                push_y = (dy / dist) * (overlap / 2)
+            min_overlap = 0.5
+            if overlap > min_overlap and dist > 0:
+                falloff = min(1.0, (overlap - min_overlap) / self.radius)
+                push_amount = min(overlap * push_strength, max_push)
+
+                # Avoid accumulated jitter by clamping subpixel movement
+                if push_amount < 0.05:
+                    continue
+
+                push_x = (dx / dist) * (push_amount / 2)
+                push_y = (dy / dist) * (push_amount / 2)
+
                 self.x += push_x
                 self.y += push_y
                 other.x -= push_x
                 other.y -= push_y
+
+
+
+
+
+
+
 
 
