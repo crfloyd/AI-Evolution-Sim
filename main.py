@@ -149,20 +149,17 @@ while running:
             f"Gen: {selected_entity.generation}"
         ]
         if isinstance(selected_entity, Prey):
-            if frame_count - last_info_update_time > 60:
+            if frame_count - last_info_update_time > 30:
                 displayed_energy = round(selected_entity.energy)
-                if displayed_energy >= selected_entity.max_energy:
-                    remaining_frames = max(0, selected_entity.reproduce_threshold - selected_entity.time_at_max_energy)
-                    displayed_repro_seconds = round(remaining_frames / 60)
-                else:
-                    displayed_repro_seconds = -1
+                energy_percent = (selected_entity.energy / selected_entity.max_energy) * 100
                 last_info_update_time = frame_count
 
             lines += [
-                f"Energy: {displayed_energy} / {selected_entity.max_energy}",
-                f"Reproduce In: {displayed_repro_seconds}s" if displayed_repro_seconds >= 0 else "Reproduce In: waiting...",
+                f"Energy: {displayed_energy} / {selected_entity.max_energy} ({energy_percent:.0f}%)",
+                "Ready to Reproduce!" if selected_entity.should_reproduce() else "Charging...",
                 f"Children: {selected_entity.children_spawned}"
             ]
+
 
         elif isinstance(selected_entity, Predator):
             time_to_starve = max(0, selected_entity.starvation_threshold - selected_entity.time_since_last_meal) // 60

@@ -10,11 +10,12 @@ MAX_TURN_SPEED = 0.15
 RADIUS = 10
 VIEW_RANGE = 100
 
-STARTING_ENERGY = 50
+STARTING_ENERGY = 0
 MAX_ENRERGY = 100
-ENERGY_REGEN_RATE = 0.4
+ENERGY_REGEN_RATE = 0.15
 ENERGY_BURN_BASE = 0.4
-ENERGY_BURN_RATE_WHILE_MOVING = 0.3
+# ENERGY_BURN_RATE_WHILE_MOVING = 0.3
+REPRODUCTION_COST = 30
 
 class Prey(BaseEntity):
     def __init__(self, x, y, generation=0):
@@ -33,18 +34,20 @@ class Prey(BaseEntity):
         self.max_energy = MAX_ENRERGY
         self.energy_regen = ENERGY_REGEN_RATE
         self.energy_burn_base = ENERGY_BURN_BASE
+        # self.energy_burn_per_speed = ENERGY_BURN_RATE_WHILE_MOVING
 
-        self.reproduce_threshold = REPRODUCTION_THRESHOLD
-
-        self.speed = 0
-        self.angular_velocity = 0
-        self.time_at_max_energy = 0
-        self.reproduce_energy_cost = 10
+        self.reproduce_energy_cost = REPRODUCTION_COST
         self.children_spawned = 0
         self.age = 0
 
+        self.speed = 0
+        self.angular_velocity = 0
+
         self.brain = NeuralNetwork(input_size=self.num_rays + 1)
         self.vision_hits = ["none"] * self.num_rays
+
+        self.neighbor_avoid_timer = 0
+        self.last_avoid_frame = 0
 
     def update(self, grid):
         # === Detect predator ===
@@ -60,28 +63,20 @@ class Prey(BaseEntity):
 
         if self.energy > 0 and sees_threat:
             self.angle += self.angular_velocity * self.max_turn_speed
+            self.angle %= math.tau
 
-        self.angle %= math.tau
-
-        if self.energy > 0 and sees_threat:
             self.speed = desired_speed
             self.x += math.cos(self.angle) * self.speed
             self.y += math.sin(self.angle) * self.speed
 
-            self.energy -= self.energy_burn_base
+            self.energy -= self.energy_burn_base 
             self.energy = max(0, self.energy)
-            self.time_at_max_energy = 0
         else:
+            # Not moving, regenerate
             self.angular_velocity = 0
             self.speed = 0
-
             self.energy += self.energy_regen
             self.energy = min(self.energy, self.max_energy)
-
-            if self.energy >= self.max_energy:
-                self.time_at_max_energy += 1
-            else:
-                self.time_at_max_energy = 0
 
         screen_width, screen_height = pygame.display.get_surface().get_size()
         self.x %= screen_width
@@ -98,7 +93,7 @@ class Prey(BaseEntity):
         if self.last_avoid_frame > 0:
             self.last_avoid_frame -= 1
             return
-        self.last_avoid_frame = 5  # Only run every 5 frames
+        self.last_avoid_frame = 5
         neighbors = grid.get_neighbors(self)
         for other in neighbors:
             if other is self or not isinstance(other, Prey):
@@ -111,7 +106,8 @@ class Prey(BaseEntity):
                 self.angle += 0.04 * math.sin(repel_angle - self.angle)
 
     def should_reproduce(self):
-        return (self.time_at_max_energy >= self.reproduce_threshold )
+        # ✅ Reproduce based on energy level
+        return self.energy >= self.max_energy
 
     def clone(self):
         child = Prey(
@@ -121,3 +117,4 @@ class Prey(BaseEntity):
         )
         child.brain = self.brain.copy_with_mutation()
         return child
+
