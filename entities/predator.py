@@ -43,11 +43,14 @@ class Predator(BaseEntity):
         self.energy = STARTING_ENERGY
         self.max_energy = MAX_ENERGY
         self.energy_burn_base = ENERGY_BURN_RATE
+        self.vision_hits = ["none"] * self.num_rays
+
 
     def update(self, frame_count, prey_list):
         self.age += 1
 
-        vision_input = self.vision + [1.0]
+        # vision_input = self.vision + [1.0]
+        vision_input = self.vision + [1.0 if all(hit == "none" for hit in self.vision_hits) else 0.0]
         out = self.brain.forward(vision_input)
         self.angular_velocity = out[0] * 0.7
         speed_factor = (out[1] + 1) / 2

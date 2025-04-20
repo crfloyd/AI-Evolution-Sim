@@ -43,7 +43,7 @@ class Prey(BaseEntity):
         self.speed = 0
         self.angular_velocity = 0
 
-        self.brain = NeuralNetwork(input_size=self.num_rays + 1)
+        self.brain = NeuralNetwork(input_size=self.num_rays + 2)
         self.vision_hits = ["none"] * self.num_rays
 
         self.neighbor_avoid_timer = 0
@@ -54,8 +54,15 @@ class Prey(BaseEntity):
         sees_threat = any(ray < 0.7 and hit == "predator"
                           for ray, hit in zip(self.vision, self.vision_hits))
 
+        # Danger signal: sum of visible predator rays, weighted by proximity
+        danger_level = sum(1.0 - ray for ray, hit in zip(self.vision, self.vision_hits) if hit == "predator")
+        vision_input = self.vision + [danger_level]
+
         # === Run brain ===
-        vision_input = self.vision + [1.0]
+        danger_level = sum(1.0 - ray for ray, hit in zip(self.vision, self.vision_hits) if hit == "predator")
+        see_nothing = 1.0 if all(hit == "none" for hit in self.vision_hits) else 0.0
+        vision_input = self.vision + [danger_level, see_nothing]
+
         out = self.brain.forward(vision_input)
         self.angular_velocity = out[0]
         speed_factor = (out[1] + 1) / 2

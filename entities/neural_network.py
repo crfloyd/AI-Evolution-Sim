@@ -10,7 +10,8 @@ class NeuralNetwork:
         self.w1 = np.random.randn(hidden_size, input_size) * np.sqrt(1 / input_size)
         self.b1 = np.zeros((hidden_size, 1))
         self.w2 = np.random.randn(output_size, hidden_size) * np.sqrt(1 / hidden_size)
-        self.b2 = np.zeros((output_size, 1))
+        # self.b2 = np.zeros((output_size, 1))
+        self.b2 = np.random.randn(output_size, 1) * 0.01
         
 
     def activate(self, x):
