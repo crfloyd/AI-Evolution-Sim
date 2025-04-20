@@ -20,7 +20,7 @@ Over time, entities that survive and reproduce pass down their neural network we
 ## Key Features
 
 - **Evolving Neural Networks**  
-  Each entity has a unique brain that mutates upon reproduction.
+  Each entity has a unique brain that mutates upon reproduction. Each entity has a small chance to mutate a "gene" upon reproduction. These mutations are passed down to the next generations.
 
 - **Raycasting Vision System**  
   Entities detect other nearby entities via directional rays, simulating field of view.
@@ -30,9 +30,6 @@ Over time, entities that survive and reproduce pass down their neural network we
 
 - **Visual Debugging**  
   Toggle vision rays and entity status panels to analyze behavior and learning.
-
-- **Real-Time Visualization**  
-  Built with `pygame`, showing smooth simulation with graphical feedback.
 
 ---
 

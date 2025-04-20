@@ -4,19 +4,20 @@ import random
 from entities.base_entity import BaseEntity
 from entities.neural_network import NeuralNetwork
 
-MAX_SPEED = 2.0
-EAT_COOLDOWN_FRAMES = 30
+
+MAX_SPEED = 4.0
+EAT_COOLDOWN_FRAMES_MULTIPLIER = 3
 REQUIRED_EATS_TO_REPRODUCE = 3
-STARVATION_THRESHOLD_FRAMES = 1000
+STARVATION_THRESHOLD_SECONDS = 20
 STARTING_ENERGY = 100
 MAX_ENERGY = 100
-ENERGY_BURN_RATE = 0.03
+ENERGY_BURN_RATE = 0.15
 
 class Predator(BaseEntity):
-    def __init__(self, x, y, generation=0):
+    def __init__(self, x, y, generation=0, frame_rate=30):
         self.num_rays = 7
         super().__init__(x, y)
-
+        self.frame_rate = frame_rate
         self.fov = math.radians(90)
         self.view_range = 250
         self.color = (255, 80, 80)
@@ -35,10 +36,10 @@ class Predator(BaseEntity):
         self.children_spawned = 0
         self.age = 0
         self.last_eat_time = -1000
-        self.eat_cooldown_frames = EAT_COOLDOWN_FRAMES
+        self.eat_cooldown_frames = frame_rate * EAT_COOLDOWN_FRAMES_MULTIPLIER
         self.required_eats_to_reproduce = REQUIRED_EATS_TO_REPRODUCE
         self.time_since_last_meal = 0
-        self.starvation_threshold = STARVATION_THRESHOLD_FRAMES
+        self.starvation_threshold = STARVATION_THRESHOLD_SECONDS * frame_rate
 
         self.energy = STARTING_ENERGY
         self.max_energy = MAX_ENERGY
@@ -107,7 +108,8 @@ class Predator(BaseEntity):
         child = Predator(
             self.x + random.randint(-10, 10),
             self.y + random.randint(-10, 10),
-            generation=self.generation + 1
+            generation=self.generation + 1,
+            frame_rate=self.frame_rate
         )
         child.brain = self.brain.copy_with_mutation(mutation_rate=0.05)
         return child

@@ -8,11 +8,12 @@ from spatial_grid import SpatialGrid
 pygame.init()
 
 MAX_PREY = 400
-SCREEN_WIDTH, SCREEN_HEIGHT = 1280, 800
+SCREEN_WIDTH, SCREEN_HEIGHT = 1440, 1000
+FRAME_RATE = 30
 GRID_CELL_SIZE = 80
 VISION_THROTTLE = 3
-NUM_STARTING_PREY = 50
-NUM_STARTING_PREDATORS = 4
+NUM_STARTING_PREY = 250
+NUM_STARTING_PREDATORS = 5
 
 screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.RESIZABLE)
 pygame.display.set_caption("Evolving AIs: Predator vs Prey")
@@ -30,14 +31,14 @@ prey_list = []
 
 
 for _ in range(NUM_STARTING_PREY):
-    x, y = random.randint(100, 1100), random.randint(100, 700)
-    prey = Prey(x, y)
+    x, y = random.randint(100, SCREEN_WIDTH - 100), random.randint(100, SCREEN_HEIGHT - 100)
+    prey = Prey(x, y, FRAME_RATE)
     entities.append(prey)
     prey_list.append(prey)
 
 for _ in range(NUM_STARTING_PREDATORS):
     x, y = random.randint(100, 1100), random.randint(100, 700)
-    predator = Predator(x, y)
+    predator = Predator(x, y, FRAME_RATE)
     entities.append(predator)
     predators.append(predator)
 
@@ -162,9 +163,9 @@ while running:
 
 
         elif isinstance(selected_entity, Predator):
-            time_to_starve = max(0, selected_entity.starvation_threshold - selected_entity.time_since_last_meal) // 60
+            time_to_starve = max(0, selected_entity.starvation_threshold - selected_entity.time_since_last_meal) // FRAME_RATE
             lines += [
-                f"Age: {selected_entity.age // 60}s",
+                f"Age: {selected_entity.age // FRAME_RATE}s",
                 f"Prey Eaten: {selected_entity.prey_eaten}",
                 f"Children: {selected_entity.children_spawned}",
                 f"Time to Starvation: {time_to_starve}s"
@@ -191,6 +192,6 @@ while running:
             screen.blit(surf, (SCREEN_WIDTH - 180, 10 + i * 20))
 
     pygame.display.flip()
-    clock.tick(60)
+    clock.tick(FRAME_RATE)
 
 pygame.quit()

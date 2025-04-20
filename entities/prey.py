@@ -3,6 +3,7 @@ import random
 import pygame
 from entities.base_entity import BaseEntity
 from entities.neural_network import NeuralNetwork
+from utils import hue_shifted_color
 
 REPRODUCTION_THRESHOLD = 600
 MAX_SPEED = 1.5
@@ -17,8 +18,13 @@ ENERGY_BURN_BASE = 0.4
 # ENERGY_BURN_RATE_WHILE_MOVING = 0.3
 REPRODUCTION_COST = 30
 
+MUTATION_DECAY_GENERATION = 20    # Generations before mutation probability drops
+ENERGY_REGEN_MUTATION_PROB = 0.1  # Mutation probability for energy regen
+MAX_ENERGY_MUTATION_PROB = 0.2    # Mutation probability for increasing max energy
+
+
 class Prey(BaseEntity):
-    def __init__(self, x, y, generation=0):
+    def __init__(self, x, y, generation=0, frame_rate=30):
         self.num_rays = 24
         super().__init__(x, y)
         self.color = (100, 200, 255)
@@ -34,54 +40,55 @@ class Prey(BaseEntity):
         self.max_energy = MAX_ENRERGY
         self.energy_regen = ENERGY_REGEN_RATE
         self.energy_burn_base = ENERGY_BURN_BASE
-        # self.energy_burn_per_speed = ENERGY_BURN_RATE_WHILE_MOVING
 
         self.reproduce_energy_cost = REPRODUCTION_COST
+        self.time_since_threat = 0
         self.children_spawned = 0
         self.age = 0
 
         self.speed = 0
         self.angular_velocity = 0
 
-        self.brain = NeuralNetwork(input_size=self.num_rays + 2)
+        self.brain = NeuralNetwork(input_size=self.num_rays + 3)
         self.vision_hits = ["none"] * self.num_rays
 
         self.neighbor_avoid_timer = 0
         self.last_avoid_frame = 0
 
     def update(self, grid):
-        # === Detect predator ===
         sees_threat = any(ray < 0.7 and hit == "predator"
-                          for ray, hit in zip(self.vision, self.vision_hits))
+                        for ray, hit in zip(self.vision, self.vision_hits))
 
-        # Danger signal: sum of visible predator rays, weighted by proximity
-        danger_level = sum(1.0 - ray for ray, hit in zip(self.vision, self.vision_hits) if hit == "predator")
-        vision_input = self.vision + [danger_level]
-
-        # === Run brain ===
         danger_level = sum(1.0 - ray for ray, hit in zip(self.vision, self.vision_hits) if hit == "predator")
         see_nothing = 1.0 if all(hit == "none" for hit in self.vision_hits) else 0.0
-        vision_input = self.vision + [danger_level, see_nothing]
 
+        if sees_threat:
+            self.time_since_threat = 0
+        else:
+            self.time_since_threat += 1
+
+        threat_time_norm = min(self.time_since_threat / 300, 1.0)
+
+        vision_input = self.vision + [danger_level, see_nothing, threat_time_norm]
         out = self.brain.forward(vision_input)
+
         self.angular_velocity = out[0]
-        speed_factor = (out[1] + 1) / 2
-        desired_speed = speed_factor * self.max_speed
+        acceleration = (out[1] + 1) / 2  # [0, 1]
+        self.speed += acceleration * 0.1
+        self.speed = min(self.speed, self.max_speed)
 
         if self.energy > 0 and sees_threat:
             self.angle += self.angular_velocity * self.max_turn_speed
             self.angle %= math.tau
 
-            self.speed = desired_speed
             self.x += math.cos(self.angle) * self.speed
             self.y += math.sin(self.angle) * self.speed
 
-            self.energy -= self.energy_burn_base 
+            self.energy -= self.energy_burn_base
             self.energy = max(0, self.energy)
         else:
-            # Not moving, regenerate
             self.angular_velocity = 0
-            self.speed = 0
+            self.speed *= 0.9  # decay
             self.energy += self.energy_regen
             self.energy = min(self.energy, self.max_energy)
 
@@ -91,6 +98,7 @@ class Prey(BaseEntity):
 
         self._update_softbody_stretch()
         self.avoid_neighbors(grid)
+
 
     def avoid_neighbors(self, grid):
         if self.neighbor_avoid_timer > 0:
@@ -124,10 +132,40 @@ class Prey(BaseEntity):
         )
         child.brain = self.brain.copy_with_mutation()
 
-        # Mutate speed-related traits
-        child.max_speed = max(0.5, self.max_speed + random.gauss(0, 0.05))
-        child.energy_burn_base = max(0.1, self.energy_burn_base + random.gauss(0, 0.01))
+        child.max_speed = max(0.5, round(self.max_speed + random.gauss(0, 0.1), 2))
+        child.energy_burn_base = max(0.1, round(self.energy_burn_base + random.gauss(0, 0.01), 2))
+
+        # Copy traits not currently mutated
+        child.radius = self.radius
+        child.max_turn_speed = self.max_turn_speed
+        child.reproduce_energy_cost = self.reproduce_energy_cost
+
+        # Mutate energy traits
+        child.energy_regen = self.energy_regen
+        child.max_energy = self.max_energy
+        mutated = False
+
+        if random.random() < ENERGY_REGEN_MUTATION_PROB:
+            child.energy_regen = round(self.energy_regen + random.uniform(0.01, 0.05), 2)
+            mutated = True
+
+        if random.random() < MAX_ENERGY_MUTATION_PROB:
+            child.max_energy = round(self.max_energy + random.uniform(5, 20), 2)
+            mutated = True
+
+        if mutated:
+            regen_factor = (child.energy_regen - ENERGY_REGEN_RATE) / 0.3
+            energy_factor = (child.max_energy - MAX_ENRERGY) / 100
+            combined = max(0.0, min(regen_factor + energy_factor, 1.0))
+            hue = 0.6 - 0.6 * combined
+            child.color = hue_shifted_color(hue)
+        else:
+            child.color = self.color
 
         return child
+
+
+
+
 
 
