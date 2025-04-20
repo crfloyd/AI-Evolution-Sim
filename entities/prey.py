@@ -116,5 +116,11 @@ class Prey(BaseEntity):
             generation=self.generation + 1
         )
         child.brain = self.brain.copy_with_mutation()
+
+        # Mutate speed-related traits
+        child.max_speed = max(0.5, self.max_speed + random.gauss(0, 0.05))
+        child.energy_burn_base = max(0.1, self.energy_burn_base + random.gauss(0, 0.01))
+
         return child
+
 

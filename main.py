@@ -7,7 +7,7 @@ from spatial_grid import SpatialGrid
 
 pygame.init()
 
-MAX_PREY = 350
+MAX_PREY = 400
 SCREEN_WIDTH, SCREEN_HEIGHT = 1280, 800
 GRID_CELL_SIZE = 80
 VISION_THROTTLE = 3

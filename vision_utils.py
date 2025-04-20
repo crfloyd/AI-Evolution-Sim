@@ -52,7 +52,14 @@ def raycast_batch(
                 closest_y = self_y + ray_dy * proj_len
                 dist_sq = (ox - closest_x) ** 2 + (oy - closest_y) ** 2
 
-                if dist_sq < radius ** 2 and proj_len < closest_dist:
+                # Clamp to avoid negative zero-ish values due to floating point error
+                if dist_sq < radius * radius and proj_len < closest_dist:
+                    if typ == HIT_PREDATOR and detect_predator:
+                        closest_dist = proj_len
+                        hit_type = HIT_PREDATOR
+                    elif typ == HIT_PREY and detect_prey:
+                        closest_dist = proj_len
+                        hit_type = HIT_PREY
                     if typ == HIT_PREDATOR and detect_predator:
                         closest_dist = proj_len
                         hit_type = HIT_PREDATOR
