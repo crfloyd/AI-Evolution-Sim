@@ -14,7 +14,7 @@ import numpy as np
 
 class BaseEntity:
 
-    def __init__(self, x, y):
+    def __init__(self, x, y, entity_type="unknown"):
         self.x = x
         self.y = y
         self.angle = random.uniform(0, 2 * math.pi)
@@ -23,6 +23,8 @@ class BaseEntity:
         self.stop_timer = 0
         self.move_timer = 0
         self.is_moving = True
+        self.entity_type = entity_type
+
         
         self.last_collision_frame = 0
         self.neighbor_avoid_timer = 0
@@ -88,7 +90,7 @@ class BaseEntity:
 
 
     def draw_vision_rays(self, surface):
-        if not self.vision:
+        if not self.vision or not hasattr(self, "vision_hits"):
             return
 
         if math.isclose(self.fov, math.tau):  # 360° vision
@@ -99,14 +101,17 @@ class BaseEntity:
             ray_angles = [start_angle + i * (self.fov / (self.num_rays - 1)) for i in range(self.num_rays)]
 
         for i, angle in enumerate(ray_angles):
-            normalized_dist = self.vision[i]
-            actual_length = normalized_dist * self.view_range
+            # Actual distance is capped at view_range
+            ray_length = self.vision[i] * self.view_range
+            end_x = self.x + math.cos(angle) * ray_length
+            end_y = self.y + math.sin(angle) * ray_length
 
-            end_x = int(self.x + math.cos(angle) * actual_length)
-            end_y = int(self.y + math.sin(angle) * actual_length)
+            # Color logic: Yellow if hit something, gray otherwise
+            hit = self.vision_hits[i]
+            color = (255, 255, 0) if hit != "none" else (100, 100, 100)
 
-            color = (255, 255, 0) if normalized_dist < 1.0 else (100, 100, 100)
             pygame.draw.line(surface, color, (self.x, self.y), (end_x, end_y), 1)
+
 
     def cast_vision(self, others):
 
@@ -118,16 +123,15 @@ class BaseEntity:
             other_positions[i, 0] = o.x
             other_positions[i, 1] = o.y
             other_radii[i] = o.radius
-            cls_name = o.__class__.__name__.lower()
-            if cls_name == "predator":
+            if o.entity_type == "predator":
                 other_types[i] = HIT_PREDATOR
-            elif cls_name == "prey":
+            elif o.entity_type == "prey":
                 other_types[i] = HIT_PREY
             else:
                 other_types[i] = HIT_NONE
 
-        detect_predator = any(o.__class__.__name__.lower() == "predator" for o in others)
-        detect_prey = any(o.__class__.__name__.lower() == "prey" for o in others)
+        detect_predator = self.entity_type == "prey"
+        detect_prey = self.entity_type == "predator"
 
         vision_raw, hits_raw = raycast_batch(
             self.x, self.y, self.angle, self.fov, self.view_range,
@@ -141,37 +145,38 @@ class BaseEntity:
 
 
     def resolve_collisions(self, others, push_strength=0.05, max_push=0.8):
-        if self.last_collision_frame > 0:
-            self.last_collision_frame -= 1
-            return
-        self.last_collision_frame = 5
+        return
+        # if self.last_collision_frame > 0:
+        #     self.last_collision_frame -= 1
+        #     return
+        # self.last_collision_frame = 5
 
-        if hasattr(self, "settling_timer") and self.settling_timer > 0:
-            return
-        for other in others:
-            if other is self:
-                continue
-            if type(self) != type(other):  # 🔒 skip predator-prey collisions
-                continue
-            dx = self.x - other.x
-            dy = self.y - other.y
-            dist_sq = dx * dx + dy * dy
-            overlap = 0
-            radius_sum = self.radius + other.radius
-            if dist_sq < radius_sum * radius_sum:
-                dist = math.sqrt(dist_sq)
-                overlap = radius_sum - dist
+        # if hasattr(self, "settling_timer") and self.settling_timer > 0:
+        #     return
+        # for other in others:
+        #     if other is self:
+        #         continue
+        #     if type(self) != type(other):  # 🔒 skip predator-prey collisions
+        #         continue
+        #     dx = self.x - other.x
+        #     dy = self.y - other.y
+        #     dist_sq = dx * dx + dy * dy
+        #     overlap = 0
+        #     radius_sum = self.radius + other.radius
+        #     if dist_sq < radius_sum * radius_sum:
+        #         dist = math.sqrt(dist_sq)
+        #         overlap = radius_sum - dist
 
-            if overlap > 0 and dist > 0:
-                push_amount = min(overlap * push_strength, max_push)
-                if push_amount < 0.05:
-                    continue
-                push_x = (dx / dist) * (push_amount / 2)
-                push_y = (dy / dist) * (push_amount / 2)
-                self.x += push_x
-                self.y += push_y
-                other.x -= push_x
-                other.y -= push_y
+        #     if overlap > 0 and dist > 0:
+        #         push_amount = min(overlap * push_strength, max_push)
+        #         if push_amount < 0.05:
+        #             continue
+        #         push_x = (dx / dist) * (push_amount / 2)
+        #         push_y = (dy / dist) * (push_amount / 2)
+        #         self.x += push_x
+        #         self.y += push_y
+        #         other.x -= push_x
+        #         other.y -= push_y
 
 
 

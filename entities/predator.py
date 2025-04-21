@@ -3,10 +3,11 @@ import pygame
 import random
 from entities.base_entity import BaseEntity
 from entities.neural_network import NeuralNetwork
+from utils import hue_shifted_color
 
 
 MAX_SPEED = 4.0
-EAT_COOLDOWN_FRAMES_MULTIPLIER = 3
+EAT_COOLDOWN_FRAMES_MULTIPLIER = 1
 REQUIRED_EATS_TO_REPRODUCE = 3
 STARVATION_THRESHOLD_SECONDS = 20
 STARTING_ENERGY = 100
@@ -16,7 +17,7 @@ ENERGY_BURN_RATE = 0.15
 class Predator(BaseEntity):
     def __init__(self, x, y, generation=0, frame_rate=30):
         self.num_rays = 7
-        super().__init__(x, y)
+        super().__init__(x, y, entity_type="predator")
         self.frame_rate = frame_rate
         self.fov = math.radians(90)
         self.view_range = 250
@@ -24,7 +25,7 @@ class Predator(BaseEntity):
         self.radius = 12
         self.generation = generation
 
-        self.brain = NeuralNetwork(input_size=self.num_rays + 1)
+        self.brain = NeuralNetwork(input_size=self.num_rays + 2)
         self.brain.b2[0] = 0.0  # no turn
 
 
@@ -32,6 +33,7 @@ class Predator(BaseEntity):
         self.max_speed = MAX_SPEED
         self.max_turn_speed = 0.15
 
+        self.frames_since_prey_seen = 9999
         self.prey_eaten = 0
         self.children_spawned = 0
         self.age = 0
@@ -49,9 +51,22 @@ class Predator(BaseEntity):
 
     def update(self, frame_count, prey_list):
         self.age += 1
+        # === Track prey memory ===
+        sees_prey = any(ray < 0.7 and hit == "prey"
+                        for ray, hit in zip(self.vision, self.vision_hits))
+
+        if sees_prey:
+            self.frames_since_prey_seen = 0
+        else:
+            self.frames_since_prey_seen += 1
+
+        # Normalize memory into a value from 1.0 (just saw prey) to 0.0 (forgotten)
+        prey_memory = max(0.0, 1.0 - self.frames_since_prey_seen / 60.0)
 
         # vision_input = self.vision + [1.0]
-        vision_input = self.vision + [1.0 if all(hit == "none" for hit in self.vision_hits) else 0.0]
+        see_nothing = 1.0 if all(hit == "none" for hit in self.vision_hits) else 0.0
+        vision_input = self.vision + [see_nothing, prey_memory]
+
         out = self.brain.forward(vision_input)
         self.angular_velocity = out[0] * 0.7
         speed_factor = (out[1] + 1) / 2
@@ -113,33 +128,29 @@ class Predator(BaseEntity):
         )
         child.brain = self.brain.copy_with_mutation(mutation_rate=0.05)
         return child
+    
+    def clone(self):
+        child = Predator(
+            self.x + random.randint(-10, 10),
+            self.y + random.randint(-10, 10),
+            generation=self.generation + 1,
+            frame_rate=self.frame_rate
+        )
+        child.brain = self.brain.copy_with_mutation(mutation_rate=0.05)
 
-    def draw(self, screen, selected=False):
-        angle_deg = math.degrees(self.angle)
-        width = self.radius * 2 * self.stretch
-        height = self.radius * 2 / self.stretch
+        # Mutate physical traits
+        child.max_speed = max(1.0, round(self.max_speed + random.gauss(0, 0.1), 2))
+        child.max_turn_speed = max(0.05, round(self.max_turn_speed + random.gauss(0, 0.01), 3))
+        child.stretch = max(0.5, round(self.stretch + random.gauss(0, 0.01), 3))
+        if child.stretch > self.stretch: 
+            hue = max(0, 0.6 - 0.6 * child.stretch)
+            child.color = hue_shifted_color(hue)
+        child.max_energy = max(100, int(self.max_energy + random.gauss(0, 10)))
+        # child.view_range = max(50, int(self.view_range + random.gauss(0, 5)))
+        # child.fov = max(math.radians(30), min(math.radians(180), self.fov + random.gauss(0, math.radians(5))))
 
-        body = pygame.Surface((width, height), pygame.SRCALPHA)
-        pygame.draw.ellipse(body, self.color, (0, 0, width, height))
-        rotated = pygame.transform.rotate(body, -angle_deg)
-        rect = rotated.get_rect(center=(self.x, self.y))
-        screen.blit(rotated, rect)
+        return child
 
-        eye_offset_angle = math.pi / 6
-        eye_distance = self.radius * 0.8
-        eye_radius = 4
-        pupil_radius = 2
-
-        for side in (-1, 1):
-            eye_angle = self.angle + side * eye_offset_angle
-            eye_x = self.x + math.cos(eye_angle) * eye_distance
-            eye_y = self.y + math.sin(eye_angle) * eye_distance
-            pygame.draw.circle(screen, (255, 255, 255), (int(eye_x), int(eye_y)), eye_radius)
-            pygame.draw.circle(screen, (0, 0, 0), (int(eye_x), int(eye_y)), pupil_radius)
-
-        if selected:
-            pygame.draw.circle(screen, (255, 255, 255), (int(self.x), int(self.y)), int(self.radius * self.stretch), width=2)
-            self.draw_vision_rays(screen)
 
     def avoid_neighbors(self, grid):
         if self.neighbor_avoid_timer > 0:

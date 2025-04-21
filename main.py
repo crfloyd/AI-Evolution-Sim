@@ -7,12 +7,13 @@ from spatial_grid import SpatialGrid
 
 pygame.init()
 
-MAX_PREY = 400
+MAX_PREY = 100
 SCREEN_WIDTH, SCREEN_HEIGHT = 1440, 1000
+# SCREEN_WIDTH, SCREEN_HEIGHT = 500, 500
 FRAME_RATE = 30
-GRID_CELL_SIZE = 80
+GRID_CELL_SIZE = 50
 VISION_THROTTLE = 3
-NUM_STARTING_PREY = 250
+NUM_STARTING_PREY = 100
 NUM_STARTING_PREDATORS = 5
 
 screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.RESIZABLE)
@@ -73,7 +74,7 @@ while running:
 
     if frame_count % VISION_THROTTLE == 0:
         for e in entities:
-            neighbors = grid.get_neighbors(e)
+            neighbors = grid.get_neighbors(e, radius=e.view_range)
             nearby = []
 
             view_range_sq = e.view_range * e.view_range
@@ -99,7 +100,6 @@ while running:
             e.age += 1
             e.update(grid)
             if e.should_reproduce():
-                e.energy -= e.reproduce_energy_cost
                 if len(prey_list) >= MAX_PREY:
                     continue
                 child = e.clone()
@@ -150,9 +150,10 @@ while running:
             f"Gen: {selected_entity.generation}"
         ]
         if isinstance(selected_entity, Prey):
+            energy_percent = 0
             if frame_count - last_info_update_time > 30:
                 displayed_energy = round(selected_entity.energy)
-                energy_percent = (selected_entity.energy / selected_entity.max_energy) * 100
+                energy_percent = (displayed_energy / selected_entity.max_energy) * 100
                 last_info_update_time = frame_count
 
             lines += [

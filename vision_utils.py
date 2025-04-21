@@ -60,12 +60,6 @@ def raycast_batch(
                     elif typ == HIT_PREY and detect_prey:
                         closest_dist = proj_len
                         hit_type = HIT_PREY
-                    if typ == HIT_PREDATOR and detect_predator:
-                        closest_dist = proj_len
-                        hit_type = HIT_PREDATOR
-                    elif typ == HIT_PREY and detect_prey:
-                        closest_dist = proj_len
-                        hit_type = HIT_PREY
 
         vision[ray_idx] = closest_dist / view_range
         hits[ray_idx] = hit_type

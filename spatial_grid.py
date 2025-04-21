@@ -20,12 +20,19 @@ class SpatialGrid:
             self.grid[key] = []
         self.grid[key].append(entity)
 
-    def get_neighbors(self, entity):
+    def get_neighbors(self, entity, radius=None):
         cx, cy = self._cell_coords(entity.x, entity.y)
+        cells = set()
+
+        radius = radius or self.cell_size * 1.5  # fallback
+        cell_range = int(math.ceil(radius / self.cell_size))
+
+        for dx in range(-cell_range, cell_range + 1):
+            for dy in range(-cell_range, cell_range + 1):
+                cells.add((cx + dx, cy + dy))
+
         neighbors = []
-        for dx in (-1, 0, 1):
-            for dy in (-1, 0, 1):
-                cell = (cx + dx, cy + dy)
-                if cell in self.grid:
-                    neighbors.extend(self.grid[cell])
+        for cell in cells:
+            neighbors.extend(self.grid.get(cell, []))
         return neighbors
+
