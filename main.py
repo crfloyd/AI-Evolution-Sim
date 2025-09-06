@@ -30,7 +30,6 @@ VISION_THROTTLE = 3
 NUM_STARTING_PREY = 250
 NUM_STARTING_PREDATORS = 5
 
-
 screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.RESIZABLE)
 pygame.display.set_caption("Evolving AIs: Predator vs Prey")
 clock = pygame.time.Clock()
@@ -91,12 +90,14 @@ prey_list = []
 for _ in range(NUM_STARTING_PREY):
     x, y = random.randint(100, SCREEN_WIDTH - 100), random.randint(100, SCREEN_HEIGHT - 100)
     prey = Prey(x, y, generation=0, frame_rate=FRAME_RATE)
+    prey.fitness_stats['birth_frame'] = 0  # Starting entities born at frame 0
     entities.append(prey)
     prey_list.append(prey)
 
 for _ in range(NUM_STARTING_PREDATORS):
     x, y = random.randint(100, 1100), random.randint(100, 700)
     predator = Predator(x, y, generation=0, frame_rate=FRAME_RATE)
+    predator.fitness_stats['birth_frame'] = 0  # Starting entities born at frame 0
     entities.append(predator)
     predators.append(predator)
 
@@ -221,11 +222,24 @@ while running:
         for e in entities:
             if isinstance(e, Prey):
                 e.age += 1
-                e.update(grid)
+                death_reason = e.update(grid)
+                
+                # Check for natural death
+                if death_reason:
+                    e.update_fitness_stats(frame_count)
+                    fitness_score = e.calculate_prey_fitness()
+                    simulation_data["events"].append([
+                        frame_count, "death_natural", e.id, e.generation,
+                        e.age // FRAME_RATE, int(e.energy), e.children_spawned, death_reason, int(fitness_score)
+                    ])
+                    removed_prey.append(e)
+                    continue
+                    
                 if e.should_reproduce():
                     if len(prey_list) >= MAX_PREY:
                         continue
                     child = e.clone()
+                    child.fitness_stats['birth_frame'] = frame_count  # Set birth frame for fitness tracking
                     new_entities.append(child)
                     e.children_spawned += 1
                     e.time_at_max_energy = 0
@@ -244,24 +258,29 @@ while running:
                     if target in entities:
                         removed_prey.append(target)
                     child = e.clone()
+                    child.fitness_stats['birth_frame'] = frame_count  # Set birth frame for fitness tracking
                     e.children_spawned += 1
                     new_entities.append(child)
                 elif outcome == "die":
-                    # Log predator death - compact format  
+                    # Log predator death with fitness - compact format  
+                    target.update_fitness_stats(frame_count)
+                    fitness_score = target.calculate_predator_fitness()
                     simulation_data["events"].append([
                         frame_count, "death_pred", target.id, target.generation,
-                        target.age // FRAME_RATE, target.prey_eaten
+                        target.age // FRAME_RATE, target.prey_eaten, int(fitness_score)
                     ])
                     if target in predators:
                         predators.remove(target)
                     if target in entities:
                         entities.remove(target)
 
-        # Log prey death events - compact format
+        # Log prey death events with fitness - compact format
         for p in removed_prey:
+            p.update_fitness_stats(frame_count)
+            fitness_score = p.calculate_prey_fitness()
             simulation_data["events"].append([
                 frame_count, "death_prey", p.id, p.generation,
-                p.age // FRAME_RATE, int(p.energy), p.children_spawned
+                p.age // FRAME_RATE, int(p.energy), p.children_spawned, int(fitness_score)
             ])
             if p in prey_list:
                 prey_list.remove(p)

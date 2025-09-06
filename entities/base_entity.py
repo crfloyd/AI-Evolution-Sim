@@ -36,6 +36,17 @@ class BaseEntity:
         # Vision
         self.vision = [1.0] * (self.num_rays) # initialize to "nothing seen"
         self.stretch = 1.0  # dynamic scale factor
+        
+        # Fitness tracking
+        self.fitness_stats = {
+            'birth_frame': 0,
+            'death_frame': None,
+            'survival_time': 0,
+            'children_produced': 0,
+            'energy_efficiency': 0.0,
+            'threat_encounters': 0,
+            'successful_escapes': 0
+        }
 
 
     def _update_movement_timing(self):
@@ -186,6 +197,37 @@ class BaseEntity:
 
     def draw_overlay(self, surface):
         pass
+        
+    def update_fitness_stats(self, frame_count):
+        """Update fitness tracking statistics"""
+        self.fitness_stats['survival_time'] = frame_count - self.fitness_stats['birth_frame']
+        
+    def record_threat_encounter(self):
+        """Record when entity encounters a threat"""
+        self.fitness_stats['threat_encounters'] += 1
+        
+    def record_successful_escape(self):
+        """Record when entity successfully escapes from threat"""
+        self.fitness_stats['successful_escapes'] += 1
+        
+    def record_reproduction(self):
+        """Record when entity successfully reproduces"""
+        self.fitness_stats['children_produced'] += 1
+        
+    def calculate_base_fitness(self):
+        """Calculate basic fitness score for this entity"""
+        survival_time = self.fitness_stats['survival_time']
+        children = self.fitness_stats['children_produced']
+        
+        # Base fitness: survival time + reproductive success bonus
+        fitness = survival_time + (children * 500)  # 500 frames bonus per child
+        
+        # Escape efficiency bonus (for prey)
+        if self.fitness_stats['threat_encounters'] > 0:
+            escape_rate = self.fitness_stats['successful_escapes'] / self.fitness_stats['threat_encounters']
+            fitness += escape_rate * 200  # Bonus for good escape rate
+            
+        return max(0, fitness)
 
 
 

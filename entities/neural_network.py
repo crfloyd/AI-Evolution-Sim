@@ -26,7 +26,15 @@ class NeuralNetwork:
         return o.flatten()
     
     
-    def copy_with_mutation(self, mutation_rate=0.05, num_rays=None):
+    def copy_with_mutation(self, mutation_rate=0.03, num_rays=None, generation=0):
+        # Adaptive mutation rate: higher early generations, lower later
+        if generation <= 2:
+            adaptive_rate = mutation_rate * 2.0  # 2x rate for early exploration
+        elif generation <= 5:
+            adaptive_rate = mutation_rate * 1.5  # 1.5x rate for medium exploration
+        else:
+            adaptive_rate = mutation_rate * 0.7  # 0.7x rate for fine-tuning
+            
         new_input_size = num_rays if num_rays is not None else self.input_size
         clone = NeuralNetwork(new_input_size, self.hidden_size, self.output_size)
 
@@ -39,10 +47,10 @@ class NeuralNetwork:
             clone.w1[:, min_inputs:] = np.random.randn(self.hidden_size, new_input_size - min_inputs) * np.sqrt(1 / new_input_size)
         
         # Apply mutations to all layers
-        w1_mutations = np.random.randn(*clone.w1.shape) * mutation_rate
-        b1_mutations = np.random.randn(*self.b1.shape) * mutation_rate
-        w2_mutations = np.random.randn(*self.w2.shape) * mutation_rate
-        b2_mutations = np.random.randn(*self.b2.shape) * mutation_rate
+        w1_mutations = np.random.randn(*clone.w1.shape) * adaptive_rate
+        b1_mutations = np.random.randn(*self.b1.shape) * adaptive_rate
+        w2_mutations = np.random.randn(*self.w2.shape) * adaptive_rate
+        b2_mutations = np.random.randn(*self.b2.shape) * adaptive_rate
         
         clone.w1 = clone.w1 + w1_mutations
         clone.b1 = self.b1 + b1_mutations

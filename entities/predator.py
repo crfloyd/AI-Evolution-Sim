@@ -14,6 +14,16 @@ STARTING_ENERGY = 100
 MAX_ENERGY = 100
 ENERGY_BURN_RATE = 0.15
 
+
+def adaptive_mutation_probability(base_prob, generation):
+    """Calculate adaptive mutation probability based on generation"""
+    if generation <= 2:
+        return base_prob * 1.8  # Higher early exploration
+    elif generation <= 5:
+        return base_prob * 1.3  # Medium exploration
+    else:
+        return base_prob * 0.8  # Lower fine-tuning
+
 class Predator(BaseEntity):
     def __init__(self, x, y, generation=0, frame_rate=30, num_rays=7):
         self.num_rays = num_rays
@@ -21,6 +31,11 @@ class Predator(BaseEntity):
         def num_rays(self):
             return self._num_rays
         super().__init__(x, y, entity_type="predator")
+        
+        # Initialize fitness tracking
+        self.fitness_stats['birth_frame'] = 0  # Will be set when added to simulation
+        self.fitness_stats['prey_caught'] = 0
+        self.fitness_stats['hunt_attempts'] = 0
         self.frame_rate = frame_rate
         self.fov = math.radians(90)
         self.view_range = 250
@@ -28,7 +43,7 @@ class Predator(BaseEntity):
         self.radius = 12
         self.generation = generation
 
-        self.brain = NeuralNetwork(input_size=self.num_rays + 3)
+        self.brain = NeuralNetwork(input_size=self.num_rays + 3, hidden_size=10)  # Predator: focused brain for hunting
         self.brain.b2[0] = 0.0  # no turn
 
 
@@ -104,14 +119,22 @@ class Predator(BaseEntity):
                 facing_prey = abs(angle_diff) < math.radians(60)
 
                 if dist < self.radius + prey.radius and facing_prey:
+                    # Fitness tracking: record hunt attempt
+                    self.fitness_stats['hunt_attempts'] += 1
+                    
                     if frame_count - self.last_eat_time > self.eat_cooldown_frames:
                         self.prey_eaten += 1
                         self.last_eat_time = frame_count
                         self.time_since_last_meal = 0
                         self.energy = min(self.energy + 30, self.max_energy)
+                        
+                        # Fitness tracking: record successful hunt
+                        self.fitness_stats['prey_caught'] += 1
 
                         if self.prey_eaten >= self.required_eats_to_reproduce:
                             self.prey_eaten = 0
+                            # Fitness tracking: record reproduction
+                            self.record_reproduction()
                             return "reproduce", prey
 
                     eaten.append(prey)
@@ -136,7 +159,7 @@ class Predator(BaseEntity):
         child.parent_id = self.id
         child.mutations = {}
 
-        if random.random() < 0.05:
+        if random.random() < adaptive_mutation_probability(0.02, self.generation):  # Adaptive vision mutation rate
             old_rays = self.num_rays
             child.num_rays = min(30, self.num_rays + random.choice([1, 2]))
             child.vision = [1.0] * child.num_rays
@@ -150,7 +173,7 @@ class Predator(BaseEntity):
             child.num_rays = self.num_rays
             child.vision = [1.0] * child.num_rays
             child.vision_hits = ["none"] * child.num_rays
-            child.brain = self.brain.copy_with_mutation(num_rays=child.num_rays + 3)
+            child.brain = self.brain.copy_with_mutation(num_rays=child.num_rays + 3, generation=self.generation)
 
         # Track neural mutations if significant (>0.01 strength)
         if hasattr(child.brain, '_mutation_strength') and child.brain._mutation_strength > 0.01:
@@ -220,5 +243,31 @@ class Predator(BaseEntity):
             pulse = 100 + int(80 * (1 + math.sin(time.time() * 4)))  # fast pulsating
             color = (pulse, pulse, 0)  # glowing yellow
             pygame.draw.circle(surface, sanitize_color(color), (int(self.x), int(self.y)), self.radius + 4, 2)
+            
+    def calculate_predator_fitness(self):
+        """Calculate comprehensive fitness score for predator"""
+        base_fitness = self.calculate_base_fitness()
+        
+        # Hunting efficiency bonus
+        hunt_success_rate = 0.0
+        if self.fitness_stats['hunt_attempts'] > 0:
+            hunt_success_rate = self.fitness_stats['prey_caught'] / self.fitness_stats['hunt_attempts']
+            hunt_efficiency_bonus = hunt_success_rate * 400  # Major bonus for hunting efficiency
+            base_fitness += hunt_efficiency_bonus
+            
+        # Prey caught bonus (absolute hunting success)
+        prey_bonus = self.fitness_stats['prey_caught'] * 200  # 200 points per prey caught
+        base_fitness += prey_bonus
+        
+        # Age bonus (surviving longer is good)
+        age_bonus = (self.age / self.frame_rate) * 15  # 15 points per second survived
+        base_fitness += age_bonus
+        
+        # Reproduction efficiency bonus
+        if self.age > 0:
+            repro_efficiency = (self.children_spawned / (self.age / self.frame_rate)) * 500
+            base_fitness += repro_efficiency
+            
+        return base_fitness
 
     
