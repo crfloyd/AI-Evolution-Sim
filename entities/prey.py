@@ -5,12 +5,21 @@ from entities.base_entity import BaseEntity
 from entities.neural_network import NeuralNetwork
 from utils import hue_shifted_color
 
+# Import centralized frame rate constant
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+try:
+    from main import FRAME_RATE
+except ImportError:
+    FRAME_RATE = 60  # Fallback if import fails
+
 MAX_SPEED = 5.5
 MAX_TURN_SPEED = 0.25
 RADIUS = 10
 VIEW_RANGE = 100
 
-STARTING_ENERGY = 0
+STARTING_ENERGY = 0  # Will be randomized in __init__
 MAX_ENRERGY = 100
 ENERGY_REGEN_RATE = 10 # Energy regeneration rate per second
 ENERGY_BURN_BASE = 0.01 
@@ -40,7 +49,7 @@ def adaptive_mutation_probability(base_prob, generation):
 
 
 class Prey(BaseEntity):
-    def __init__(self, x, y, generation=0, frame_rate=30):
+    def __init__(self, x, y, generation=0, frame_rate=FRAME_RATE):
         self.frame_rate = frame_rate
         self.num_rays = 24
         super().__init__(x, y, entity_type="prey")
@@ -57,9 +66,12 @@ class Prey(BaseEntity):
         self.view_range = VIEW_RANGE
 
         self.max_turn_speed = MAX_TURN_SPEED
-        self.energy = STARTING_ENERGY
+        # Randomize starting energy to prevent synchronization across all generations
+        base_energy = STARTING_ENERGY if generation > 0 else 0
+        self.energy = base_energy + random.randint(0, 40)  # Add 0-40 random energy
         self.max_energy = MAX_ENRERGY
-        self.energy_regen = ENERGY_REGEN_RATE / frame_rate
+        # Randomize energy regen rate to prevent synchronization (±20% variation)
+        self.energy_regen = (ENERGY_REGEN_RATE / frame_rate) * random.uniform(0.8, 1.2)
         self.energy_burn_base = ENERGY_BURN_BASE
 
         self.reproduce_energy_cost = REPRODUCTION_COST
@@ -87,7 +99,7 @@ class Prey(BaseEntity):
         if sees_threat:
             self.frames_since_predator_seen = 0
             # Fitness tracking: record threat encounter
-            if self.frames_since_predator_seen > 30:  # Only count if not recently seen
+            if self.frames_since_predator_seen > (0.5 * self.frame_rate):  # Only count if not recently seen (0.5s)
                 self.record_threat_encounter()
         else:
             self.frames_since_predator_seen += 1
@@ -101,22 +113,28 @@ class Prey(BaseEntity):
 
         self.angular_velocity = out[0]
         acceleration = (out[1] + 1) / 2  # [0, 1]
-        self.speed += acceleration * 0.15
+        # Make acceleration frame-rate independent
+        self.speed += acceleration * 0.15 * (30.0 / self.frame_rate)
         self.speed = min(self.speed, self.max_speed)
 
         if self.energy > 0 and sees_threat:
-            self.angle += self.angular_velocity * self.max_turn_speed
+            # Make angular velocity frame-rate independent
+            self.angle += self.angular_velocity * self.max_turn_speed * (30.0 / self.frame_rate)
             self.angle %= math.tau
 
-            self.x += math.cos(self.angle) * self.speed
-            self.y += math.sin(self.angle) * self.speed
+            # Make movement frame-rate independent
+            self.x += math.cos(self.angle) * self.speed * (30.0 / self.frame_rate)
+            self.y += math.sin(self.angle) * self.speed * (30.0 / self.frame_rate)
 
             
-            self.energy -= self.energy_burn_base
+            # Make energy burn frame-rate independent
+            self.energy -= self.energy_burn_base * (30.0 / self.frame_rate)
             self.energy = max(0, self.energy)
         else:   
             self.angular_velocity = 0
-            self.speed *= 0.9  # decay
+            # Make speed decay frame-rate independent
+            decay_factor = 0.9 ** (30.0 / self.frame_rate)
+            self.speed *= decay_factor
             self.energy += self.energy_regen
             self.energy = min(self.energy, self.max_energy)
 
@@ -161,8 +179,9 @@ class Prey(BaseEntity):
 
 
     def should_reproduce(self):
-        # ✅ Reproduce based on energy level
-        return self.energy >= REPRODUCTION_ENERGY_THRESHOLD
+        # ✅ Reproduce based on energy level with slight randomization to prevent synchronization
+        threshold = REPRODUCTION_ENERGY_THRESHOLD + random.uniform(-5, 5)
+        return self.energy >= threshold
     
     def should_die_naturally(self):
         # Die from old age

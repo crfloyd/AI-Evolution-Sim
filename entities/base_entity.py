@@ -3,6 +3,7 @@ import math
 import random
 from entities.neural_network import NeuralNetwork
 from vision_utils import raycast_batch, HIT_NONE, HIT_PREDATOR, HIT_PREY
+from sprite_cache import get_sprite_cache
 
 HIT_TYPE_MAP = {
     HIT_PREDATOR: "predator",
@@ -72,15 +73,21 @@ class BaseEntity:
         self.stretch += (target_stretch - self.stretch) * 0.2  # easing factor
 
     def draw(self, surface, selected=False):
-        angle_deg = math.degrees(self.angle)
         width = self.radius * 2 * self.stretch
         height = self.radius * 2 / self.stretch
 
-        body = pygame.Surface((width, height), pygame.SRCALPHA)
-        pygame.draw.ellipse(body, self.color, (0, 0, width, height))
-        rotated = pygame.transform.rotate(body, -angle_deg)
-        rect = rotated.get_rect(center=(self.x, self.y))
-        surface.blit(rotated, rect)
+        # Use sprite cache for optimized rendering
+        sprite_cache = get_sprite_cache()
+        cached_sprite = sprite_cache.get_sprite(
+            entity_type=self.entity_type,
+            color=self.color,
+            width=int(width),
+            height=int(height),
+            angle=self.angle
+        )
+        
+        rect = cached_sprite.get_rect(center=(self.x, self.y))
+        surface.blit(cached_sprite, rect)
 
         # === EYE RENDERING ===
         eye_offset_angle = math.pi / 6  # separation between eyes

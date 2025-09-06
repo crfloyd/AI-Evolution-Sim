@@ -10,6 +10,8 @@ import atexit
 from entities.prey import Prey
 from entities.predator import Predator
 from spatial_grid import SpatialGrid
+from performance_logger import PerformanceLogger
+from sprite_cache import get_sprite_cache
 
 
 
@@ -21,10 +23,11 @@ args = parser.parse_args()
 
 pygame.init()
 
-MAX_PREY = 500
+MAX_PREY = 1000
 SCREEN_WIDTH, SCREEN_HEIGHT = 1440, 1000
 # SCREEN_WIDTH, SCREEN_HEIGHT = 500, 500
-FRAME_RATE = 30
+# Global constants
+FRAME_RATE = 60  # Master frame rate - change only here to affect entire simulation
 GRID_CELL_SIZE = 50
 VISION_THROTTLE = 3
 NUM_STARTING_PREY = 250
@@ -51,9 +54,13 @@ simulation_data = {
     "frame_data": [],
     "events": []
 }
-log_interval = 30  # Log every 30 frames (1 second at 30fps)
+log_interval = FRAME_RATE  # Log every second (frames per second)
 last_save_time = time.time()
 save_interval = 30  # Save to disk every 30 seconds (not every 10 seconds)
+
+# Performance logging
+perf_logger = PerformanceLogger()
+vision_cast_count = 0  # Track vision casts per frame
 
 def save_simulation_data():
     """Save simulation data to file - called on exit or periodically"""
@@ -61,6 +68,10 @@ def save_simulation_data():
         with open("simulation_log.json", "w") as f:
             json.dump(simulation_data, f, indent=2)
         print(f"Simulation data saved to simulation_log.json ({len(simulation_data['events'])} events)")
+        
+        # Save performance data
+        perf_logger.save_to_file()
+        perf_logger.print_summary()
     except Exception as e:
         print(f"Error saving simulation data: {e}")
 
@@ -163,6 +174,9 @@ def log_simulation_data():
 running = True
 while running:
     frame_count += 1
+    perf_logger.log_frame_start()  # Track frame timing
+    vision_cast_count = 0  # Reset counter for this frame
+    
     screen.fill((30, 30, 30))
     grid.clear()
     for e in entities:
@@ -216,6 +230,7 @@ while running:
                         nearby.append(o)
 
                 e.cast_vision(nearby)
+                vision_cast_count += 1
 
         new_entities = []
         removed_prey = []
@@ -307,6 +322,17 @@ while running:
                 
         # Log simulation data
         log_simulation_data()
+        
+        # Log performance data every log_interval frames
+        if frame_count % log_interval == 0:
+            current_fps = clock.get_fps()
+            sprite_cache = get_sprite_cache()
+            cache_stats = sprite_cache.get_cache_stats()
+            perf_logger.log_performance_sample(
+                frame_count, current_fps, len(prey_list), len(predators),
+                entities_drawn=len(entities), vision_casts=vision_cast_count,
+                sprite_cache_stats=cache_stats
+            )
 
         if frame_count % 5 == 0:
             for e in entities:
@@ -322,7 +348,7 @@ while running:
         ]
         if isinstance(selected_entity, Prey):
             energy_percent = 0
-            if frame_count - last_info_update_time > 30:
+            if frame_count - last_info_update_time > FRAME_RATE:
                 displayed_energy = round(selected_entity.energy)
                 energy_percent = (displayed_energy / selected_entity.max_energy) * 100
                 last_info_update_time = frame_count

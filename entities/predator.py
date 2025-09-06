@@ -5,6 +5,15 @@ from entities.base_entity import BaseEntity
 from entities.neural_network import NeuralNetwork
 from utils import hue_shifted_color, sanitize_color
 
+# Import centralized frame rate constant
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+try:
+    from main import FRAME_RATE
+except ImportError:
+    FRAME_RATE = 60  # Fallback if import fails
+
 
 MAX_SPEED = 4.0
 EAT_COOLDOWN_FRAMES_MULTIPLIER = 0.5
@@ -25,7 +34,7 @@ def adaptive_mutation_probability(base_prob, generation):
         return base_prob * 0.8  # Lower fine-tuning
 
 class Predator(BaseEntity):
-    def __init__(self, x, y, generation=0, frame_rate=30, num_rays=7):
+    def __init__(self, x, y, generation=0, frame_rate=FRAME_RATE, num_rays=7):
         self.num_rays = num_rays
         @property
         def num_rays(self):
@@ -81,7 +90,7 @@ class Predator(BaseEntity):
             self.frames_since_prey_seen += 1
 
         # Normalize memory into a value from 1.0 (just saw prey) to 0.0 (forgotten)
-        prey_memory = max(0.0, 1.0 - self.frames_since_prey_seen / 60.0)
+        prey_memory = max(0.0, 1.0 - self.frames_since_prey_seen / (2 * self.frame_rate))  # fades over 2 seconds
 
         # vision_input = self.vision + [1.0]
         see_nothing = 1.0 if all(hit == "none" for hit in self.vision_hits) else 0.0
@@ -93,10 +102,12 @@ class Predator(BaseEntity):
         speed_factor = (out[1] + 1) / 2
         self.speed = speed_factor * self.max_speed
 
-        self.angle += self.angular_velocity * self.max_turn_speed
+        # Make angular velocity frame-rate independent
+        self.angle += self.angular_velocity * self.max_turn_speed * (30.0 / self.frame_rate)
         self.angle %= math.tau
-        self.x += math.cos(self.angle) * self.speed
-        self.y += math.sin(self.angle) * self.speed
+        # Make movement frame-rate independent
+        self.x += math.cos(self.angle) * self.speed * (30.0 / self.frame_rate)
+        self.y += math.sin(self.angle) * self.speed * (30.0 / self.frame_rate)
 
         screen_width, screen_height = pygame.display.get_surface().get_size()
         self.x %= screen_width
@@ -104,8 +115,8 @@ class Predator(BaseEntity):
 
         self._update_softbody_stretch()
 
-        # Burn energy
-        self.energy -= self.energy_burn_base
+        # Burn energy - make frame-rate independent
+        self.energy -= self.energy_burn_base * (30.0 / self.frame_rate)
         self.energy = max(0, self.energy)
 
         if frame_count % 2 == 0:
