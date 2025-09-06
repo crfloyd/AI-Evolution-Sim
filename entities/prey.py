@@ -81,20 +81,32 @@ class Prey(BaseEntity):
         self.speed = 0
         self.angular_velocity = 0
 
-        self.brain = NeuralNetwork(input_size=self.num_rays + 3, hidden_size=16)  # Prey: larger brain for evasion
+        self.brain = NeuralNetwork(input_size=self.num_rays + 3, hidden_size=16)
         self.vision_hits = ["none"] * self.num_rays
         self.frames_since_predator_seen = 999
+        
+        # Cache screen dimensions to avoid repeated pygame calls
+        self._screen_width = None
+        self._screen_height = None
 
 
         self.neighbor_avoid_timer = 0
         self.last_avoid_frame = 0
 
     def update(self, grid):
-        sees_threat = any(ray < 0.7 and hit == "predator"
-                        for ray, hit in zip(self.vision, self.vision_hits))
-
-        danger_level = sum(1.0 - ray for ray, hit in zip(self.vision, self.vision_hits) if hit == "predator")
-        see_nothing = 1.0 if all(hit == "none" for hit in self.vision_hits) else 0.0
+        # Optimize vision processing with single pass
+        predator_hits = 0
+        sees_threat = False
+        danger_level = 0.0
+        
+        for ray, hit in zip(self.vision, self.vision_hits):
+            if hit == "predator":
+                predator_hits += 1
+                danger_level += (1.0 - ray)
+                if ray < 0.7:
+                    sees_threat = True
+        
+        see_nothing = 1.0 if predator_hits == 0 else 0.0
 
         if sees_threat:
             self.frames_since_predator_seen = 0
@@ -116,13 +128,21 @@ class Prey(BaseEntity):
         self.speed += acceleration * 0.15 * (30.0 / self.frame_rate)
         self.speed = min(self.speed, self.max_speed)
 
+        # Cache screen dimensions on first use
+        if self._screen_width is None:
+            self._screen_width, self._screen_height = pygame.display.get_surface().get_size()
+
         if self.energy > 0 and sees_threat:
             self.angle += self.angular_velocity * self.max_turn_speed * (30.0 / self.frame_rate)
             self.angle %= math.tau
 
-            self.x += math.cos(self.angle) * self.speed * (30.0 / self.frame_rate)
-            self.y += math.sin(self.angle) * self.speed * (30.0 / self.frame_rate)
-
+            # Cache trig calculations and only calculate if moving
+            if self.speed > 0.01:
+                cos_angle = math.cos(self.angle)
+                sin_angle = math.sin(self.angle)
+                frame_speed = self.speed * (30.0 / self.frame_rate)
+                self.x += cos_angle * frame_speed
+                self.y += sin_angle * frame_speed
             
             self.energy -= self.energy_burn_base * (30.0 / self.frame_rate)
             self.energy = max(0, self.energy)
@@ -133,9 +153,8 @@ class Prey(BaseEntity):
             self.energy += self.energy_regen
             self.energy = min(self.energy, self.max_energy)
 
-        screen_width, screen_height = pygame.display.get_surface().get_size()
-        self.x %= screen_width
-        self.y %= screen_height
+        self.x %= self._screen_width
+        self.y %= self._screen_height
 
         self._update_softbody_stretch()
         # self.avoid_neighbors(grid)

@@ -44,7 +44,7 @@ displayed_repro_seconds = 0
 presentation_mode = args.presentation_mode
 presentation_step = 0
 paused = args.presentation_mode
-show_stats = True
+show_stats = False
 
 simulation_data = {
     "start_time": time.time(),
@@ -251,7 +251,7 @@ while running:
                     e.children_spawned += 1
                     e.time_at_max_energy = 0
             elif isinstance(e, Predator):
-                outcome, target = e.update(frame_count, prey_list)
+                outcome, target = e.update(frame_count, grid)
                 # Update grid position if entity moved
                 grid.update_entity(e)
                 if outcome == "eat":

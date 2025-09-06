@@ -76,25 +76,31 @@ class Predator(BaseEntity):
         self.energy_burn_base = ENERGY_BURN_RATE
         self.vision_hits = ["none"] * self.num_rays
         self.vision = [1.0] * self.num_rays 
+        
+        # Cache screen dimensions to avoid repeated pygame calls
+        self._screen_width = None
+        self._screen_height = None 
 
 
-    def update(self, frame_count, prey_list):
+    def update(self, frame_count, grid):
         self.age += 1
-        # === Track prey memory ===
-        sees_prey = any(ray < 0.7 and hit == "prey"
-                        for ray, hit in zip(self.vision, self.vision_hits))
+        # Optimize vision processing with single pass
+        prey_hits = 0
+        sees_prey = False
+        for ray, hit in zip(self.vision, self.vision_hits):
+            if hit == "prey":
+                prey_hits += 1
+                if ray < 0.7:
+                    sees_prey = True
 
         if sees_prey:
             self.frames_since_prey_seen = 0
         else:
             self.frames_since_prey_seen += 1
 
-        # Normalize memory into a value from 1.0 (just saw prey) to 0.0 (forgotten)
-        prey_memory = max(0.0, 1.0 - self.frames_since_prey_seen / (2 * self.frame_rate))  # fades over 2 seconds
-
-        # vision_input = self.vision + [1.0]
-        see_nothing = 1.0 if all(hit == "none" for hit in self.vision_hits) else 0.0
-        prey_count = sum(1 for hit in self.vision_hits if hit == "prey") / self.num_rays
+        prey_memory = max(0.0, 1.0 - self.frames_since_prey_seen / (2 * self.frame_rate))
+        see_nothing = 1.0 if prey_hits == 0 else 0.0
+        prey_count = prey_hits / self.num_rays
         vision_input = self.vision + [see_nothing, prey_memory, prey_count]
 
         out = self.brain.forward(vision_input)
@@ -102,50 +108,66 @@ class Predator(BaseEntity):
         speed_factor = (out[1] + 1) / 2
         self.speed = speed_factor * self.max_speed
 
+        # Cache screen dimensions on first use
+        if self._screen_width is None:
+            self._screen_width, self._screen_height = pygame.display.get_surface().get_size()
+
         self.angle += self.angular_velocity * self.max_turn_speed * (30.0 / self.frame_rate)
         self.angle %= math.tau
-        self.x += math.cos(self.angle) * self.speed * (30.0 / self.frame_rate)
-        self.y += math.sin(self.angle) * self.speed * (30.0 / self.frame_rate)
+        
+        # Cache trig calculations if moving
+        if self.speed > 0.01:
+            cos_angle = math.cos(self.angle)
+            sin_angle = math.sin(self.angle)
+            frame_speed = self.speed * (30.0 / self.frame_rate)
+            self.x += cos_angle * frame_speed
+            self.y += sin_angle * frame_speed
 
-        screen_width, screen_height = pygame.display.get_surface().get_size()
-        self.x %= screen_width
-        self.y %= screen_height
+        self.x %= self._screen_width
+        self.y %= self._screen_height
 
         self._update_softbody_stretch()
 
         self.energy -= self.energy_burn_base * (30.0 / self.frame_rate)
         self.energy = max(0, self.energy)
 
-        if frame_count % 2 == 0:
+        # Skip collision detection if barely moving and not hunting
+        if frame_count % 2 == 0 and (self.speed > 0.5 or sees_prey):
             eaten = []
-            for prey in prey_list:
+            nearby_entities = grid.get_neighbors(self, radius=self.radius * 3)
+            
+            for entity in nearby_entities:
+                if entity.entity_type != "prey":
+                    continue
+                prey = entity
                 dx = prey.x - self.x
                 dy = prey.y - self.y
-                dist = math.hypot(dx, dy)
-                angle_to_prey = math.atan2(dy, dx)
-                angle_diff = (angle_to_prey - self.angle + math.pi) % (2 * math.pi) - math.pi
-                facing_prey = abs(angle_diff) < math.radians(60)
+                dist_sq = dx * dx + dy * dy
+                
+                # Early distance check using squared distance (faster)
+                if dist_sq < (self.radius + prey.radius) ** 2:
+                    # Only calculate angle if within collision distance
+                    angle_to_prey = math.atan2(dy, dx)
+                    angle_diff = (angle_to_prey - self.angle + math.pi) % (2 * math.pi) - math.pi
+                    facing_prey = abs(angle_diff) < math.radians(60)
 
-                if dist < self.radius + prey.radius and facing_prey:
-                    # Fitness tracking: record hunt attempt
-                    self.fitness_stats['hunt_attempts'] += 1
-                    
-                    if frame_count - self.last_eat_time > self.eat_cooldown_frames:
-                        self.prey_eaten += 1
-                        self.last_eat_time = frame_count
-                        self.time_since_last_meal = 0
-                        self.energy = min(self.energy + 30, self.max_energy)
+                    if facing_prey:
+                        self.fitness_stats['hunt_attempts'] += 1
                         
-                        # Fitness tracking: record successful hunt
-                        self.fitness_stats['prey_caught'] += 1
+                        if frame_count - self.last_eat_time > self.eat_cooldown_frames:
+                            self.prey_eaten += 1
+                            self.last_eat_time = frame_count
+                            self.time_since_last_meal = 0
+                            self.energy = min(self.energy + 30, self.max_energy)
+                            
+                            self.fitness_stats['prey_caught'] += 1
 
-                        if self.prey_eaten >= self.required_eats_to_reproduce:
-                            self.prey_eaten = 0
-                            # Fitness tracking: record reproduction
-                            self.record_reproduction()
-                            return "reproduce", prey
+                            if self.prey_eaten >= self.required_eats_to_reproduce:
+                                self.prey_eaten = 0
+                                self.record_reproduction()
+                                return "reproduce", prey
 
-                    eaten.append(prey)
+                        eaten.append(prey)
 
             if eaten:
                 return "eat", eaten
@@ -208,23 +230,6 @@ class Predator(BaseEntity):
         child.max_energy = max(100, int(self.max_energy + random.gauss(0, 10)))
         if abs(child.max_energy - old_energy) / old_energy > 0.05:
             child.mutations["e"] = [old_energy, child.max_energy]
-
-        return child
-
-
-
-        
-
-        # Mutate physical traits
-        child.max_speed = max(1.0, round(self.max_speed + random.gauss(0, 0.1), 2))
-        child.max_turn_speed = max(0.05, round(self.max_turn_speed + random.gauss(0, 0.01), 3))
-        child.stretch = max(0.5, round(self.stretch + random.gauss(0, 0.01), 3))
-        if child.stretch > self.stretch:
-            child.color = hue_shifted_color(self.color, 0.1)
-        child.max_energy = max(100, int(self.max_energy + random.gauss(0, 10)))
-
-        # child.view_range = max(50, int(self.view_range + random.gauss(0, 5)))
-        # child.fov = max(math.radians(30), min(math.radians(180), self.fov + random.gauss(0, math.radians(5))))
 
         return child
 
