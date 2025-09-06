@@ -67,10 +67,8 @@ class SpriteCache:
         """
         cache_key = self._get_cache_key(entity_type, color, width, height)
         
-        # Check if we have this sprite configuration cached
         if cache_key not in self.cache:
             self.cache_misses += 1
-            # Create base sprite and pre-compute all rotations
             base_sprite = self._create_base_sprite(entity_type, color, width, height)
             self.cache[cache_key] = self._pre_compute_rotations(base_sprite)
         else:
@@ -109,7 +107,6 @@ class SpriteCache:
         return total_surfaces * avg_pixels_per_surface * 4
 
 
-# Global sprite cache instance
 _sprite_cache = None
 
 def get_sprite_cache() -> SpriteCache:

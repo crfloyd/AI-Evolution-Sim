@@ -44,7 +44,7 @@ class PerformanceLogger:
     def log_performance_sample(self, frame_count: int, current_fps: float, 
                               prey_count: int, predator_count: int, 
                               entities_drawn: int = None, vision_casts: int = None,
-                              sprite_cache_stats: dict = None):
+                              sprite_cache_stats: dict = None, array_pool_stats: dict = None):
         """Log a performance sample"""
         
         # Calculate rolling frame time statistics
@@ -84,6 +84,8 @@ class PerformanceLogger:
             sample["ai"] = {"vision_casts": vision_casts}
         if sprite_cache_stats is not None:
             sample["sprite_cache"] = sprite_cache_stats
+        if array_pool_stats is not None:
+            sample["vision_array_pool"] = array_pool_stats
             
         self.data["performance_samples"].append(sample)
         

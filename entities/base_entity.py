@@ -2,7 +2,7 @@ import pygame
 import math
 import random
 from entities.neural_network import NeuralNetwork
-from vision_utils import raycast_batch, HIT_NONE, HIT_PREDATOR, HIT_PREY
+from vision_utils import raycast_batch, raycast_batch_optimized, HIT_NONE, HIT_PREDATOR, HIT_PREY
 from sprite_cache import get_sprite_cache
 
 HIT_TYPE_MAP = {
@@ -76,7 +76,6 @@ class BaseEntity:
         width = self.radius * 2 * self.stretch
         height = self.radius * 2 / self.stretch
 
-        # Use sprite cache for optimized rendering
         sprite_cache = get_sprite_cache()
         cached_sprite = sprite_cache.get_sprite(
             entity_type=self.entity_type,
@@ -157,13 +156,13 @@ class BaseEntity:
         detect_predator = self.entity_type == "prey"
         detect_prey = self.entity_type == "predator"
 
-        vision_raw, hits_raw = raycast_batch(
+        vision_raw, hits_raw = raycast_batch_optimized(
             self.x, self.y, self.angle, self.fov, self.view_range,
             self.num_rays, other_positions, other_radii, other_types,
             detect_predator, detect_prey
         )
 
-        self.vision = vision_raw.tolist()
+        self.vision = vision_raw
         self.vision_hits = [HIT_TYPE_MAP[h] for h in hits_raw]
 
 

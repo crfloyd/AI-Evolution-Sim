@@ -21,11 +21,11 @@ VIEW_RANGE = 100
 
 STARTING_ENERGY = 0  # Will be randomized in __init__
 MAX_ENRERGY = 100
-ENERGY_REGEN_RATE = 10 # Energy regeneration rate per second
+ENERGY_REGEN_RATE = 15 # Energy regeneration rate per second (increased from 10)
 ENERGY_BURN_BASE = 0.01 
 # ENERGY_BURN_RATE_WHILE_MOVING = 0.3
-REPRODUCTION_COST = 80
-REPRODUCTION_ENERGY_THRESHOLD = 100
+REPRODUCTION_COST = 60  # Reduced from 80 to match new threshold
+REPRODUCTION_ENERGY_THRESHOLD = 75  # Reduced from 100
 
 # Death conditions
 MAX_AGE_SECONDS = 45      # Prey dies of old age after 45 seconds
@@ -113,26 +113,21 @@ class Prey(BaseEntity):
 
         self.angular_velocity = out[0]
         acceleration = (out[1] + 1) / 2  # [0, 1]
-        # Make acceleration frame-rate independent
         self.speed += acceleration * 0.15 * (30.0 / self.frame_rate)
         self.speed = min(self.speed, self.max_speed)
 
         if self.energy > 0 and sees_threat:
-            # Make angular velocity frame-rate independent
             self.angle += self.angular_velocity * self.max_turn_speed * (30.0 / self.frame_rate)
             self.angle %= math.tau
 
-            # Make movement frame-rate independent
             self.x += math.cos(self.angle) * self.speed * (30.0 / self.frame_rate)
             self.y += math.sin(self.angle) * self.speed * (30.0 / self.frame_rate)
 
             
-            # Make energy burn frame-rate independent
             self.energy -= self.energy_burn_base * (30.0 / self.frame_rate)
             self.energy = max(0, self.energy)
         else:   
             self.angular_velocity = 0
-            # Make speed decay frame-rate independent
             decay_factor = 0.9 ** (30.0 / self.frame_rate)
             self.speed *= decay_factor
             self.energy += self.energy_regen

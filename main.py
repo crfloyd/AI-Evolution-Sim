@@ -12,11 +12,11 @@ from entities.predator import Predator
 from spatial_grid import SpatialGrid
 from performance_logger import PerformanceLogger
 from sprite_cache import get_sprite_cache
+from vision_array_pool import get_vision_array_pool
 
 
 
 
-# Parse command line arguments
 parser = argparse.ArgumentParser(description='Evolutionary AI Simulation')
 parser.add_argument('--presentation-mode', action='store_true', help='Enable presentation mode')
 args = parser.parse_args()
@@ -26,8 +26,7 @@ pygame.init()
 MAX_PREY = 1000
 SCREEN_WIDTH, SCREEN_HEIGHT = 1440, 1000
 # SCREEN_WIDTH, SCREEN_HEIGHT = 500, 500
-# Global constants
-FRAME_RATE = 60  # Master frame rate - change only here to affect entire simulation
+FRAME_RATE = 60
 GRID_CELL_SIZE = 50
 VISION_THROTTLE = 3
 NUM_STARTING_PREY = 250
@@ -42,51 +41,42 @@ last_info_update_time = 0
 displayed_energy = 0
 displayed_repro_seconds = 0
 
-# Presentation system for YouTube-style intro
 presentation_mode = args.presentation_mode
 presentation_step = 0
-paused = args.presentation_mode  # Only start paused if in presentation mode
+paused = args.presentation_mode
 show_stats = True
 
-# Data logging setup
 simulation_data = {
     "start_time": time.time(),
     "frame_data": [],
     "events": []
 }
-log_interval = FRAME_RATE  # Log every second (frames per second)
+log_interval = FRAME_RATE
 last_save_time = time.time()
-save_interval = 30  # Save to disk every 30 seconds (not every 10 seconds)
+save_interval = 30
 
-# Performance logging
 perf_logger = PerformanceLogger()
-vision_cast_count = 0  # Track vision casts per frame
+vision_cast_count = 0
 
 def save_simulation_data():
-    """Save simulation data to file - called on exit or periodically"""
     try:
         with open("simulation_log.json", "w") as f:
             json.dump(simulation_data, f, indent=2)
         print(f"Simulation data saved to simulation_log.json ({len(simulation_data['events'])} events)")
         
-        # Save performance data
         perf_logger.save_to_file()
         perf_logger.print_summary()
     except Exception as e:
         print(f"Error saving simulation data: {e}")
 
 def signal_handler(sig, frame):
-    """Handle Ctrl+C gracefully"""
     print("\nSaving simulation data before exit...")
     save_simulation_data()
     pygame.quit()
     sys.exit(0)
 
-# Register exit handlers
 signal.signal(signal.SIGINT, signal_handler)
 atexit.register(save_simulation_data)
-
-# Fonts for presentation
 title_font = pygame.font.Font(None, 84)
 subtitle_font = pygame.font.Font(None, 48)
 text_font = pygame.font.Font(None, 36)
@@ -101,14 +91,14 @@ prey_list = []
 for _ in range(NUM_STARTING_PREY):
     x, y = random.randint(100, SCREEN_WIDTH - 100), random.randint(100, SCREEN_HEIGHT - 100)
     prey = Prey(x, y, generation=0, frame_rate=FRAME_RATE)
-    prey.fitness_stats['birth_frame'] = 0  # Starting entities born at frame 0
+    prey.fitness_stats['birth_frame'] = 0
     entities.append(prey)
     prey_list.append(prey)
 
 for _ in range(NUM_STARTING_PREDATORS):
     x, y = random.randint(100, 1100), random.randint(100, 700)
     predator = Predator(x, y, generation=0, frame_rate=FRAME_RATE)
-    predator.fitness_stats['birth_frame'] = 0  # Starting entities born at frame 0
+    predator.fitness_stats['birth_frame'] = 0
     entities.append(predator)
     predators.append(predator)
 
@@ -117,12 +107,13 @@ show_debug_panel = False
 frame_count = 0
 grid = SpatialGrid(SCREEN_WIDTH, SCREEN_HEIGHT, cell_size=GRID_CELL_SIZE)
 
+for entity in entities:
+    grid.add_entity(entity)
+
 def log_simulation_data():
-    """Collect and log current simulation state"""
     if frame_count % log_interval != 0:
         return
     
-    # Calculate stats
     prey_generations = [p.generation for p in prey_list] if prey_list else [0]
     pred_generations = [p.generation for p in predators] if predators else [0]
     
@@ -178,9 +169,6 @@ while running:
     vision_cast_count = 0  # Reset counter for this frame
     
     screen.fill((30, 30, 30))
-    grid.clear()
-    for e in entities:
-        grid.add_entity(e)
 
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
@@ -238,6 +226,8 @@ while running:
             if isinstance(e, Prey):
                 e.age += 1
                 death_reason = e.update(grid)
+                # Update grid position if entity moved
+                grid.update_entity(e)
                 
                 # Check for natural death
                 if death_reason:
@@ -251,15 +241,19 @@ while running:
                     continue
                     
                 if e.should_reproduce():
-                    if len(prey_list) >= MAX_PREY:
+                    # Check current prey count + already planned births this frame
+                    total_prey_planned = len(prey_list) + len([x for x in new_entities if x.entity_type == "prey"])
+                    if total_prey_planned >= MAX_PREY:
                         continue
                     child = e.clone()
-                    child.fitness_stats['birth_frame'] = frame_count  # Set birth frame for fitness tracking
+                    child.fitness_stats['birth_frame'] = frame_count
                     new_entities.append(child)
                     e.children_spawned += 1
                     e.time_at_max_energy = 0
             elif isinstance(e, Predator):
                 outcome, target = e.update(frame_count, prey_list)
+                # Update grid position if entity moved
+                grid.update_entity(e)
                 if outcome == "eat":
                     # Log hunt success - compact format
                     simulation_data["events"].append([
@@ -273,7 +267,7 @@ while running:
                     if target in entities:
                         removed_prey.append(target)
                     child = e.clone()
-                    child.fitness_stats['birth_frame'] = frame_count  # Set birth frame for fitness tracking
+                    child.fitness_stats['birth_frame'] = frame_count
                     e.children_spawned += 1
                     new_entities.append(child)
                 elif outcome == "die":
@@ -284,6 +278,8 @@ while running:
                         frame_count, "death_pred", target.id, target.generation,
                         target.age // FRAME_RATE, target.prey_eaten, int(fitness_score)
                     ])
+                    # Remove from grid before removing from lists
+                    grid.remove_entity(target)
                     if target in predators:
                         predators.remove(target)
                     if target in entities:
@@ -297,6 +293,8 @@ while running:
                 frame_count, "death_prey", p.id, p.generation,
                 p.age // FRAME_RATE, int(p.energy), p.children_spawned, int(fitness_score)
             ])
+            # Remove from grid before removing from lists
+            grid.remove_entity(p)
             if p in prey_list:
                 prey_list.remove(p)
             if p in entities:
@@ -315,6 +313,8 @@ while running:
 
         for n in new_entities:
             entities.append(n)
+            # Add new entity to grid
+            grid.add_entity(n)
             if isinstance(n, Prey):
                 prey_list.append(n)
             else:
@@ -328,10 +328,12 @@ while running:
             current_fps = clock.get_fps()
             sprite_cache = get_sprite_cache()
             cache_stats = sprite_cache.get_cache_stats()
+            array_pool = get_vision_array_pool()
+            pool_stats = array_pool.get_pool_stats()
             perf_logger.log_performance_sample(
                 frame_count, current_fps, len(prey_list), len(predators),
                 entities_drawn=len(entities), vision_casts=vision_cast_count,
-                sprite_cache_stats=cache_stats
+                sprite_cache_stats=cache_stats, array_pool_stats=pool_stats
             )
 
         if frame_count % 5 == 0:

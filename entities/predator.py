@@ -17,8 +17,8 @@ except ImportError:
 
 MAX_SPEED = 4.0
 EAT_COOLDOWN_FRAMES_MULTIPLIER = 0.5
-REQUIRED_EATS_TO_REPRODUCE = 3
-STARVATION_THRESHOLD_SECONDS = 15
+REQUIRED_EATS_TO_REPRODUCE = 5
+STARVATION_THRESHOLD_SECONDS = 12
 STARTING_ENERGY = 100
 MAX_ENERGY = 100
 ENERGY_BURN_RATE = 0.15
@@ -102,10 +102,8 @@ class Predator(BaseEntity):
         speed_factor = (out[1] + 1) / 2
         self.speed = speed_factor * self.max_speed
 
-        # Make angular velocity frame-rate independent
         self.angle += self.angular_velocity * self.max_turn_speed * (30.0 / self.frame_rate)
         self.angle %= math.tau
-        # Make movement frame-rate independent
         self.x += math.cos(self.angle) * self.speed * (30.0 / self.frame_rate)
         self.y += math.sin(self.angle) * self.speed * (30.0 / self.frame_rate)
 
@@ -115,7 +113,6 @@ class Predator(BaseEntity):
 
         self._update_softbody_stretch()
 
-        # Burn energy - make frame-rate independent
         self.energy -= self.energy_burn_base * (30.0 / self.frame_rate)
         self.energy = max(0, self.energy)
 
