@@ -90,13 +90,13 @@ prey_list = []
 
 for _ in range(NUM_STARTING_PREY):
     x, y = random.randint(100, SCREEN_WIDTH - 100), random.randint(100, SCREEN_HEIGHT - 100)
-    prey = Prey(x, y, FRAME_RATE)
+    prey = Prey(x, y, generation=0, frame_rate=FRAME_RATE)
     entities.append(prey)
     prey_list.append(prey)
 
 for _ in range(NUM_STARTING_PREDATORS):
     x, y = random.randint(100, 1100), random.randint(100, 700)
-    predator = Predator(x, y, FRAME_RATE)
+    predator = Predator(x, y, generation=0, frame_rate=FRAME_RATE)
     entities.append(predator)
     predators.append(predator)
 
