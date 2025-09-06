@@ -13,7 +13,7 @@ VIEW_RANGE = 100
 STARTING_ENERGY = 0
 MAX_ENRERGY = 100
 ENERGY_REGEN_RATE = 10 # Energy regeneration rate per second
-ENERGY_BURN_BASE = 0.3 
+ENERGY_BURN_BASE = 0.01 
 # ENERGY_BURN_RATE_WHILE_MOVING = 0.3
 REPRODUCTION_COST = 80
 REPRODUCTION_ENERGY_THRESHOLD = 100
@@ -21,6 +21,8 @@ REPRODUCTION_ENERGY_THRESHOLD = 100
 MUTATION_DECAY_GENERATION = 20    # Generations before mutation probability drops
 ENERGY_REGEN_MUTATION_PROB = 0.1  # Mutation probability for energy regen
 MAX_ENERGY_MUTATION_PROB = 0.2    # Mutation probability for increasing max energy
+MAX_TURN_SPEED_MUTATION_PROB = 0.1# Mutation probability for max turn speed
+SPEED_MUTATION_PROB = 0.5         # Mutation probability for speed
 
 
 class Prey(BaseEntity):
@@ -100,7 +102,7 @@ class Prey(BaseEntity):
         self.y %= screen_height
 
         self._update_softbody_stretch()
-        self.avoid_neighbors(grid)
+        # self.avoid_neighbors(grid)
 
 
     def avoid_neighbors(self, grid):
@@ -142,9 +144,16 @@ class Prey(BaseEntity):
             self.y + random.randint(-30, 30),
             generation=self.generation + 1
         )
+        child.parent_id = self.id
         child.brain = self.brain.copy_with_mutation()
-        child.max_speed = max(0.5, round(self.max_speed + random.gauss(0, 0.1), 2))
-        child.energy_burn_base = max(0.1, round(self.energy_burn_base + random.gauss(0, 0.01), 2))
+        # child.speed = max(0.5, round(self.max_speed + random.gauss(0, 1), 2))
+        child.energy_burn_base = max(0.1, round(self.energy_burn_base - random.gauss(0, 0.01), 2))
+        
+        # Track significant mutations
+        child.mutations = {}
+        # Track neural mutations if significant (>0.01 strength)
+        if hasattr(child.brain, '_mutation_strength') and child.brain._mutation_strength > 0.01:
+            child.mutations["n"] = round(child.brain._mutation_strength, 3)
 
         # Copy traits not currently mutated
         child.radius = self.radius
@@ -154,22 +163,52 @@ class Prey(BaseEntity):
         # Mutate energy traits
         child.energy_regen = self.energy_regen
         child.max_energy = self.max_energy
+        child.max_speed = self.max_speed
+        child.max_turn_speed = self.max_turn_speed
+        child.color = self.color
+        child.stretch = self.stretch
         mutated = False
 
-        if random.random() < ENERGY_REGEN_MUTATION_PROB:
-            child.energy_regen = round(self.energy_regen + random.uniform(0.01, 0.05), 2)
-            mutated = True
+        if random.random() < SPEED_MUTATION_PROB:
+            old_speed = self.max_speed
+            child.max_speed = round(self.max_speed + random.uniform(0.3, 1), 2)
+            if self.max_speed < child.max_speed:
+                child.stretch += 0.3
+                mutated = True
+                # Track significant speed mutation (>10% change)
+                if abs(child.max_speed - old_speed) / old_speed > 0.1:
+                    child.mutations["s"] = [old_speed, child.max_speed]
 
         if random.random() < MAX_ENERGY_MUTATION_PROB:
+            old_energy = self.max_energy
+            child.max_energy = round(self.max_energy + random.uniform(1, 3), 2)
+            mutated = True
+            # Track significant energy mutation (>5% change)
+            if abs(child.max_energy - old_energy) / old_energy > 0.05:
+                child.mutations["e"] = [old_energy, child.max_energy]
+
+        # if random.random() < MAX_TURN_SPEED_MUTATION_PROB:
+        #     child.max_turn_speed = round(self.max_turn_speed + random.uniform(0.5, 3), 2)
+        #     mutated = True
+
+        if random.random() < ENERGY_REGEN_MUTATION_PROB:
+            old_regen = self.energy_regen
+            child.energy_regen = round(self.energy_regen + random.uniform(0.01, 0.05), 2)
+            mutated = True
+            # Track significant regen mutation (>10% change)
+            if abs(child.energy_regen - old_regen) / old_regen > 0.1:
+                child.mutations["r"] = [old_regen, child.energy_regen]
+
+        if random.random() < MAX_ENERGY_MUTATION_PROB:
+            old_energy = self.max_energy
             child.max_energy = round(self.max_energy + random.uniform(5, 20), 2)
             mutated = True
+            # Track significant energy mutation (>5% change) - second mutation chance
+            if abs(child.max_energy - old_energy) / old_energy > 0.05:
+                child.mutations["e"] = [old_energy, child.max_energy]
 
         if mutated:
-            regen_factor = (child.energy_regen - ENERGY_REGEN_RATE) / 0.3
-            energy_factor = (child.max_energy - MAX_ENRERGY) / 100
-            combined = max(0.0, min(regen_factor + energy_factor, 1.0))
-            hue = 0.6 - 0.6 * combined
-            child.color = hue_shifted_color(hue)
+            child.color = hue_shifted_color(self.color, 0.1)
         else:
             child.color = self.color
 

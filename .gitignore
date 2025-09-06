@@ -59,3 +59,7 @@ htmlcov/
 
 # MacOS
 .DS_Store
+
+simulation_log.json
+
+simulation_log_analysis.json

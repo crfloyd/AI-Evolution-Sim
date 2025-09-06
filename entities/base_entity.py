@@ -13,8 +13,11 @@ HIT_TYPE_MAP = {
 import numpy as np
 
 class BaseEntity:
+    _next_id = 1  # Class variable for unique IDs
 
     def __init__(self, x, y, entity_type="unknown"):
+        self.id = BaseEntity._next_id
+        BaseEntity._next_id += 1
         self.x = x
         self.y = y
         self.angle = random.uniform(0, 2 * math.pi)
@@ -24,6 +27,7 @@ class BaseEntity:
         self.move_timer = 0
         self.is_moving = True
         self.entity_type = entity_type
+        self.stretch_amount = 1.0
 
         
         self.last_collision_frame = 0
@@ -87,6 +91,8 @@ class BaseEntity:
         # Draw vision rays
         if selected:
             self.draw_vision_rays(surface)
+
+        self.draw_overlay(surface) 
 
 
     def draw_vision_rays(self, surface):
@@ -177,6 +183,9 @@ class BaseEntity:
         #         self.y += push_y
         #         other.x -= push_x
         #         other.y -= push_y
+
+    def draw_overlay(self, surface):
+        pass
 
 
 

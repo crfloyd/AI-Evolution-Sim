@@ -3,20 +3,23 @@ import pygame
 import random
 from entities.base_entity import BaseEntity
 from entities.neural_network import NeuralNetwork
-from utils import hue_shifted_color
+from utils import hue_shifted_color, sanitize_color
 
 
 MAX_SPEED = 4.0
-EAT_COOLDOWN_FRAMES_MULTIPLIER = 1
+EAT_COOLDOWN_FRAMES_MULTIPLIER = 0.5
 REQUIRED_EATS_TO_REPRODUCE = 3
-STARVATION_THRESHOLD_SECONDS = 20
+STARVATION_THRESHOLD_SECONDS = 15
 STARTING_ENERGY = 100
 MAX_ENERGY = 100
 ENERGY_BURN_RATE = 0.15
 
 class Predator(BaseEntity):
-    def __init__(self, x, y, generation=0, frame_rate=30):
-        self.num_rays = 7
+    def __init__(self, x, y, generation=0, frame_rate=30, num_rays=7):
+        self.num_rays = num_rays
+        @property
+        def num_rays(self):
+            return self._num_rays
         super().__init__(x, y, entity_type="predator")
         self.frame_rate = frame_rate
         self.fov = math.radians(90)
@@ -25,7 +28,7 @@ class Predator(BaseEntity):
         self.radius = 12
         self.generation = generation
 
-        self.brain = NeuralNetwork(input_size=self.num_rays + 2)
+        self.brain = NeuralNetwork(input_size=self.num_rays + 3)
         self.brain.b2[0] = 0.0  # no turn
 
 
@@ -37,6 +40,7 @@ class Predator(BaseEntity):
         self.prey_eaten = 0
         self.children_spawned = 0
         self.age = 0
+        self.visual_traits = []
         self.last_eat_time = -1000
         self.eat_cooldown_frames = frame_rate * EAT_COOLDOWN_FRAMES_MULTIPLIER
         self.required_eats_to_reproduce = REQUIRED_EATS_TO_REPRODUCE
@@ -47,6 +51,7 @@ class Predator(BaseEntity):
         self.max_energy = MAX_ENERGY
         self.energy_burn_base = ENERGY_BURN_RATE
         self.vision_hits = ["none"] * self.num_rays
+        self.vision = [1.0] * self.num_rays 
 
 
     def update(self, frame_count, prey_list):
@@ -65,7 +70,8 @@ class Predator(BaseEntity):
 
         # vision_input = self.vision + [1.0]
         see_nothing = 1.0 if all(hit == "none" for hit in self.vision_hits) else 0.0
-        vision_input = self.vision + [see_nothing, prey_memory]
+        prey_count = sum(1 for hit in self.vision_hits if hit == "prey") / self.num_rays
+        vision_input = self.vision + [see_nothing, prey_memory, prey_count]
 
         out = self.brain.forward(vision_input)
         self.angular_velocity = out[0] * 0.7
@@ -119,15 +125,6 @@ class Predator(BaseEntity):
 
         return None, None
 
-    def clone(self):
-        child = Predator(
-            self.x + random.randint(-10, 10),
-            self.y + random.randint(-10, 10),
-            generation=self.generation + 1,
-            frame_rate=self.frame_rate
-        )
-        child.brain = self.brain.copy_with_mutation(mutation_rate=0.05)
-        return child
     
     def clone(self):
         child = Predator(
@@ -136,16 +133,65 @@ class Predator(BaseEntity):
             generation=self.generation + 1,
             frame_rate=self.frame_rate
         )
-        child.brain = self.brain.copy_with_mutation(mutation_rate=0.05)
+        child.parent_id = self.id
+        child.mutations = {}
+
+        if random.random() < 0.05:
+            old_rays = self.num_rays
+            child.num_rays = min(30, self.num_rays + random.choice([1, 2]))
+            child.vision = [1.0] * child.num_rays
+            child.vision_hits = ["none"] * child.num_rays
+            child.brain = self.brain.resize_input(new_num_inputs=child.num_rays + 3)
+            child.visual_traits.append("vision")
+            # Track vision mutation
+            if child.num_rays != old_rays:
+                child.mutations["v"] = [old_rays, child.num_rays]
+        else:
+            child.num_rays = self.num_rays
+            child.vision = [1.0] * child.num_rays
+            child.vision_hits = ["none"] * child.num_rays
+            child.brain = self.brain.copy_with_mutation(num_rays=child.num_rays + 3)
+
+        # Track neural mutations if significant (>0.01 strength)
+        if hasattr(child.brain, '_mutation_strength') and child.brain._mutation_strength > 0.01:
+            child.mutations["n"] = round(child.brain._mutation_strength, 3)
+
+        child.vision_hits = ["none"] * child.num_rays
+
+        # Mutate physical traits
+        old_speed = self.max_speed
+        child.max_speed = max(1.0, round(self.max_speed + random.gauss(0, 0.1), 2))
+        if abs(child.max_speed - old_speed) / old_speed > 0.1:
+            child.mutations["s"] = [old_speed, child.max_speed]
+            
+        old_turn = self.max_turn_speed
+        child.max_turn_speed = max(0.05, round(self.max_turn_speed + random.gauss(0, 0.01), 3))
+        if abs(child.max_turn_speed - old_turn) / old_turn > 0.1:
+            child.mutations["t"] = [old_turn, child.max_turn_speed]
+            
+        child.stretch = max(0.5, round(self.stretch + random.gauss(0, 0.01), 3))
+        if child.stretch > self.stretch:
+            child.color = hue_shifted_color(self.color, 0.1)
+            
+        old_energy = self.max_energy
+        child.max_energy = max(100, int(self.max_energy + random.gauss(0, 10)))
+        if abs(child.max_energy - old_energy) / old_energy > 0.05:
+            child.mutations["e"] = [old_energy, child.max_energy]
+
+        return child
+
+
+
+        
 
         # Mutate physical traits
         child.max_speed = max(1.0, round(self.max_speed + random.gauss(0, 0.1), 2))
         child.max_turn_speed = max(0.05, round(self.max_turn_speed + random.gauss(0, 0.01), 3))
         child.stretch = max(0.5, round(self.stretch + random.gauss(0, 0.01), 3))
-        if child.stretch > self.stretch: 
-            hue = max(0, 0.6 - 0.6 * child.stretch)
-            child.color = hue_shifted_color(hue)
+        if child.stretch > self.stretch:
+            child.color = hue_shifted_color(self.color, 0.1)
         child.max_energy = max(100, int(self.max_energy + random.gauss(0, 10)))
+
         # child.view_range = max(50, int(self.view_range + random.gauss(0, 5)))
         # child.fov = max(math.radians(30), min(math.radians(180), self.fov + random.gauss(0, math.radians(5))))
 
@@ -167,3 +213,12 @@ class Predator(BaseEntity):
             if dist < self.radius * 2 and dist > 0:
                 repel_angle = math.atan2(dy, dx)
                 self.angle += 0.05 * math.sin(repel_angle - self.angle)
+
+    def draw_overlay(self, surface):
+        if "vision" in self.visual_traits:
+            import time
+            pulse = 100 + int(80 * (1 + math.sin(time.time() * 4)))  # fast pulsating
+            color = (pulse, pulse, 0)  # glowing yellow
+            pygame.draw.circle(surface, sanitize_color(color), (int(self.x), int(self.y)), self.radius + 4, 2)
+
+    
